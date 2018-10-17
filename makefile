@@ -20,64 +20,57 @@ OBJS3=	setup.o
 
 OBJS4=	main.o	kernels.o	dbyd2.o	mtridag.o	dbyd1.o	tridag.o	frequencies.o
 
-
-OBJS5=	SOLA.o
-
 FC=	gfortran
-FC77=   mpif77
+FC77=   gfortran
 
 ##FC=	gfortran	
 ##FC77=   gfortran
-FFLAGS= -O3 -DDOUBLE_PRECISION ##-fbounds-check ##-p -g ##-mcmodel=large ##!-p -g ##-check all ##-fpe0 -traceback -debug #-check bounds
-LIBS1=	-L./ -lcfitsio -lfftw3 -L/home/apps/lapack-3.5 -llapack -lrefblas
+current_dir = $(shell pwd)
+FFLAGS= -O3 -DDOUBLE_PRECISION## -fbounds-check -p -g ##-mcmodel=large ##!-p -g ##-check all ##-fpe0 -traceback -debug #-check bounds
+LIBS1=	-L/home/shravan/fftw-3.3.4/lib -lfftw3 -L./ -lcfitsio -L/home/apps/lapack-3.5.0 -llapack -lrefblas -lcurl -L$(current_dir)/optlib -lf90getopt
+LIBS2=	-L$(current_dir)/optlib -lf90getopt
 
 COMMAND1=	analyze
 COMMAND2=	process
 COMMAND3=	setup
 COMMAND4=	kernels
-COMMAND5=	inverse
 
-INCLUDE= /opt/users/apps/fftw-3.2/include
+INCLUDE= $(current_dir)/opt_lib
 
 $(COMMAND1): $(OBJS1) 
-	$(FC) -I $(INCLUDE) $(FFLAGS) -o $(COMMAND1) $(OBJS1) $(LIBS1) 
+	$(FC) -I$(INCLUDE) $(FFLAGS) -o $(COMMAND1) $(OBJS1) $(LIBS1) 
 
 $(COMMAND2): $(OBJS2) 
-	$(FC) -I $(INCLUDE) $(FFLAGS) -o $(COMMAND2) $(OBJS2) $(LIBS1) 
+	$(FC) -I$(INCLUDE) $(FFLAGS) -o $(COMMAND2) $(OBJS2) $(LIBS1) 
 
 $(COMMAND3): $(OBJS3) 
-	$(FC) -I $(INCLUDE) $(FFLAGS) -o $(COMMAND3) $(OBJS3)
+	$(FC) -I$(INCLUDE) $(FFLAGS) -o $(COMMAND3) $(OBJS3) $(LIBS2)
 
 $(COMMAND4): $(OBJS4) 
-	$(FC) -I $(INCLUDE) $(FFLAGS) -o $(COMMAND4) $(OBJS4) $(LIBS1)
-
-$(COMMAND5): $(OBJS5) 
-	$(FC) -I $(INCLUDE) $(FFLAGS) -o $(COMMAND5) $(OBJS5) $(LIBS1)
+	$(FC) -I$(INCLUDE) $(FFLAGS) -o $(COMMAND4) $(OBJS4) $(LIBS1)
 
 
 %.o : %.f
-	$(FC77) -I $(INCLUDE) $(FFLAGS) -c $< 
+	$(FC77) -I$(INCLUDE) $(FFLAGS) -c $< 
 
 %.o : %.f90
-	$(FC) -I $(INCLUDE) $(FFLAGS) -c $< 
+	$(FC) -I$(INCLUDE) $(FFLAGS) -c $< 
 
 clean:
 	@find . \( -name $(COMMAND1) -o -name $(COMMAND2) \) -delete
 	@find . \( -name $(COMMAND3) -o -name $(COMMAND4) \) -delete
-	@find . -name $(COMMAND5) -delete
 	@find \( -name "*.o" -o -name "*.mod" \) -delete
 
 
 data_analysis.o:	params.i	ziggurat.o
 kernels.o:	params.i	dbyd2.o	frequencies.o
-main.o:       kernels.o	bspline90_22.o
-analysis.o:	data_analysis.o	normal.o
+main.o:       kernels.o
+analysis.o:	data_analysis.o	normal.o	f90getopt.mod
 frequencies.o:	params.i
 dbyd2.o:        mtridag.o
 dbyd1.o:        tridag.o
 postprocess.o:
-setup.o:
-SOLA.o:
+setup.o:	f90getopt.mod
 normal.o:
 mtridag.o:
-tridag.o:
+tridag.o:	

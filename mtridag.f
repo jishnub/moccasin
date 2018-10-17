@@ -11,7 +11,7 @@ c     Adapted from Press etal.
 c     Revised 3/17/98 for periodic boundaries -- NEH
 c     fixed to cope with zero pivots like tridag 6/16/99 -- NEH
 C**************************************************************************
-      PARAMETER (NMAX=700)
+      PARAMETER (NMAX=7800)
       REAL*8 A(N2),B(N2),C(N2),R(N1,N2),U(N1,N2)
       REAL*8 GAM(NMAX),UD(NMAX),BET
       REAL*8 betas(nmax),betau(nmax),betad(nmax)

@@ -3,7 +3,7 @@ C***************************************************************************
 c     Adapted from Press etal. 
 c     Revised 3/17/98 for periodic boundaries -- NEH
 C**************************************************************************
-      PARAMETER (NMAX=7000)
+      PARAMETER (NMAX=7800)
       REAL*8 A(N),B(N),C(N),R(N),U(N)
       REAL*8 GAM(NMAX),UD(NMAX),BET
       REAL*8 betas(nmax),betau(nmax),betad(nmax)

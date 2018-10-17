@@ -32,13 +32,14 @@ type(ems), allocatable, dimension(:,:,:) :: rleaks, horleaks
 type(ems), allocatable, dimension(:) :: freqsbase, leakage
 real*8, allocatable, dimension(:,:,:,:,:) :: Qmat
 
-logical existence(lmin:lmax,0:26)
+logical existence(lmin:lmax,0:30)
+ logical compute_wigner
 
 Contains
 
 !------------------
 
-subroutine basic_setup
+subroutine basic_setup!(compute_wigner)
 
  implicit none
 ! include 'params.i'
@@ -49,7 +50,6 @@ subroutine basic_setup
  real*8 temv(1:(lmax+lmax+1)), lmi, lma
  real*8, dimension(:), allocatable :: tempa
  real*8, dimension(:,:), allocatable :: tempr
- logical compute_wigner
 
    !sigmin = int(7.2*8.64*0.25)
    !sigmax = int(7.2*8.64*6)
@@ -83,8 +83,8 @@ subroutine basic_setup
 !   enddo
 !   close(44)
   !if (instrument == 'MDI')
-  if (instrument == 'MDI') call construct_frequencies('/scratch/data/4816/m10q.36',lmin,lmax,3)
-  if (instrument == 'HMI')call construct_frequencies('/scratch/data/hmi.m10qr.6328.36',lmin,lmax,1)
+  if (instrument == 'MDI') call construct_frequencies(trim(freqmdidir)//'/mdi.1216.36',lmin,lmax,1)
+  if (instrument == 'HMI')call construct_frequencies(trim(freqhmidir)//'/hmi.6328.36',lmin,lmax,1)
 
   ntot = 0
   existence(:,:) =.false.
@@ -105,7 +105,7 @@ subroutine basic_setup
 
    allocate(r(nr), rho(nr), stretch(nr), unstretch(nr), &
    eigU(nr,ntot),deigU(nr,ntot),eigV(nr,ntot), omegaref(ntot), &
-   deigV(nr,ntot),mapfwd(lmin:lmax,0:27), dr(nr), drhodr(nr),&
+   deigV(nr,ntot),mapfwd(lmin:lmax,0:30), dr(nr), drhodr(nr),&
    tempa(nr), c2(nr))
 
 
@@ -129,9 +129,7 @@ subroutine basic_setup
    enddo
    drhodr = drhodr * stretch
 
-
-   compute_wigner = .false.
-  
+!   compute_wigner = .true.
    if (compute_wigner) then
    temv = 0.d0
    do ellp = lmin, lmax
@@ -220,16 +218,18 @@ end subroutine basic_setup
 
 !------------------
 
-subroutine compute_kernels_inversion(polR, polH, polT, s, leng)
+subroutine compute_kernels_all(s, leng, asymptotics)  !inversion !(polR, polH, polT, s, leng)
 
 implicit none
 integer*8 planfwd, planinv
 integer s, ind, indp, leng, ord, k, ell, ellp, ordp,jj
 !parameter(leng = (lmax-lmin+1)**2*(ordmax-ordmin+1)**2)
-complex*16, dimension(1:nr,1:leng) :: polR, polH, polT
+complex*16, dimension(1:nr,1:leng) :: polR, polH, polT, polc
 real*8 conl, conlp, overallcon, l, m, n, lp, mp, np
 real*8 conomeg, con2, tempa(nr), outp(nr), dr(nr)
 complex*16 coeffs(1:floor(nr/2.d0)+1), filter(1:floor(nr/2.d0)+1)
+logical asymptotics
+character*3 llow, lhigh
  
 dr(1:nr-1) = r(2:nr)-r(1:nr-1)
 dr(nr) = dr(nr-1)
@@ -248,18 +248,13 @@ do k=1,floor(nr/2.d0)+1
 enddo
 
 k = 0
-!do ordp = ordmin, ordmax
- do ell = lmin+6, lmax-6
-! print *,ell,orders(ell,1),orders(ell,2)
+ do ell = lmin, lmax
   do ord = orders(ell,1), orders(ell,2)!ordmin, ordmax
    if (existence(ell, ord)) then
- ! do ellp = lmin,lmax
-
     ordp = ord
     ellp = ell
    
     k = k + 1
-     print *,k
     l = dble(ell)
     lp = l
   !  lp = dble(ellp)
@@ -269,27 +264,14 @@ k = 0
 
     ind = mapfwd(ell,ord)
     indp = ind
- !   indp = mapfwd(ellp,ordp)
     conl = dble(omeg(l,0.0d0)**2)
     conlp = conl
-!    conlp = dble(omeg(lp,0.0d0)**2)
+    conlp = dble(omeg(lp,0.0d0)**2)
 
-!    print *,ord,l,n
-!    if (ell == lmin) then
-!       call writefits('radius.fits',r,nr,1,1)
-!       call writefits('density.fits',rho,nr,1,1)
-!       print *,rho(minloc(abs(r-1.d0),1))
-!       call writefits('Eig_U_ell_120_n_6.fits',eigU(:,ind),nr,1,1)
-!       call writefits('Eig_V_ell_120_n_6.fits',eigV(:,ind),nr,1,1)
-!  
-!    elseif (ell == lmax) then
-!       call writefits('Eig_U_ell_121_n_6.fits',eigU(:,ind),nr,1,1)
-!       call writefits('Eig_V_ell_121_n_6.fits',eigV(:,ind),nr,1,1)
-!    endif
+    !print *,k!,ord,orders(ell,1),orders(ell,2),ind,existence(ell,ord)
+   if (.not. asymptotics) then
 
-!    print *, sum(dr*(eigU(:,indp)**2 + l*(l+1)*eigV(:,indp)**2)*r**2*rho),l,lp
-    overallcon =  8 * pi *  gamma_l(l) * gamma_l(lp) / ((4*pi)**0.5) !omegaref(ind) * !gamma_l(dble(s))  *
-             !* (1 - 2*modulo(int(mp),2))
+    overallcon =  8 * pi *  gamma_l(l) * gamma_l(lp) / ((4*pi)**0.5) 
 
     polR(:,k) = cmplx(0.5*(eigU(:,indp) * deigU(:,ind) - deigU(:,indp) * eigU(:,ind)) * bcoef(0.0d0,lp,dble(s),l,+1.0d0,2) &
             + 0.5*(eigV(:,indp) * deigV(:,ind) - deigV(:,indp) * eigV(:,ind)) * bcoef(1.0d0,lp,dble(s),l,+1.0d0,2))
@@ -307,64 +289,50 @@ k = 0
 
     call dbyd1(tempa, aimag(polH(:,k)), nr, 1, 1)
     tempa = (drhodr*aimag(polH(:,k)) - tempa*r*stretch)/dble(s*(s+1))
-!    do jj=1,10
-!    call filter_vars(tempa,outp) 
-!    tempa = outp
-!    enddo
     call dfftw_execute(planfwd)
     coeffs = coeffs * filter
     call dfftw_execute(planinv)
-    !print *,ellp,ell,maxval(real(abs(tempa))),maxval(real(abs(polR(:,k))))!,maxval(real(abs(drhodr*polH(:,k))))
     polH(:,k) = polR(:,k)
     polR(:,k) = polR(:,k) + tempa*(0.d0,1.d0) 
 
     polT(:,k) = cmplx((eigU(:,ind) * eigV(:,indp) + eigV(:,ind) * eigU(:,indp) - eigU(:,ind) * eigU(:,indp) &
             - eigV(:,ind) * eigV(:,indp) *(conlp + conl - omeg(dble(s),0.0d0)**2)) * bcoef(1.0d0,lp,dble(s),l,-1.0d0,2))
 
-    polT(:,k) = polT(:,k) * cmplx(rho * r)  * overallcon 
+     polT(:,k) = polT(:,k) * cmplx(rho * r)  * overallcon 
 
-! print *,maxval(abs(polT(:,k))),1
-    polR(:,k) = 0.d0
-   ! There's a factor of ell/\sqrt{pi}
-    !if (modulo(s,2) == 1) & !2*pi*1e-6*freqnu(ell)%ords(ord)*
-  polR(:,k) = (1-2.*modulo(ell,2))*(0.d0,1.d0)*(eigU(:,ind)**2+l*(l+1)*eigV(:,ind)**2)*rho*r*l*(2*l/pi)**0.5!*&!*2*pi*freqnu(ell)%ords(ord)*1e-6!*& !/2**0.5 * &
-              !dfactorial(s) **2 / factorial(dble(s)) *(1 - 2*modulo((s+1)/2,2)) !* (2.0*s+1)**0.5!
-!If you want to compare, uncomment the second line
-!
+    else
+      polR(:,k) = 0.d0
+      polR(:,k) = (1-2.*modulo(ell,2))*(0.d0,1.d0)*(eigU(:,ind)**2+l*(l+1)*eigV(:,ind)**2)*rho*r*l*(2*l/pi)**0.5
+      polc(:,k) = -(1-2.*modulo(ell,2))*rho*c2*sqrt(2*l/pi)*& 
+          (r*deigU(:,ind) - l*(l+1)*eigV(:,ind) + 2* eigU(:,ind))**2 
+     endif
 
- !print*,maxval(abs(polT(:,k)))/maxval(abs(polR(:,k))),gamma_l(l),((2*l+1)/(4*pi))**0.5
-
-     polT(:,k) = -(1-2.*modulo(ell,2))*rho*c2*sqrt(2*l/pi)*& !/(2*pi*freqnu(ell)%ords(ord)*1e-6) * &
-          (r*deigU(:,ind) - l*(l+1)*eigV(:,ind) + 2* eigU(:,ind))**2 * (speednorm/rsun)**2
-          !(r*deigU(:,indp) + 2*(omeg0p**2*eigV(:,indp) - eigU(:,indp)))
-
-     !kc(:,k) = b00(:,k)*2*gamma_l(dble(s))*c2
-  ! THIS GIVES THE L2 ERROR BETWEEN ASYMPTOTICS AND EXACT:
-!!!
-    !print*,k,l,lp,s,l+lp+s,maxval(abs(polR(:,k))),sum(dr*(aimag(polR(:,k))-real(polT(:,k)))**2.)/sum(dr*real(polT(:,k))**2.)
-!maxval(abs(polT(:,k))),maxval(abs(polR(:,k)))/maxval(abs(polT(:,k))),&
-      !aimag(polR(maxloc(abs(polR(:,k))),k))/real(polT(maxloc(abs(polT(:,k))),k))
-
-
-!    if (ellp == 121 .and. ell == 121 .and. (ord+ordp==1)) print *,ord,ordp,ind,indp,k,maxval(abs(polT(:,k))),&
-! (conlp + conl - omeg(dble(s),0.0d0)**2),  bcoef(1.0d0,lp,dble(s),l,-1.0d0,2),&
-!maxval(abs((eigU(:,ind) * eigV(:,indp) + eigV(:,ind) * eigU(:,indp) - eigU(:,ind) * eigU(:,indp) &
-!            - eigV(:,ind) * eigV(:,indp) *(conlp + conl - omeg(dble(s),0.0d0)**2)))),overallcon
-!    print *,bcoef(1.d0,120.d0,dble(s),120.d0,-1.d0,2),bcoef(1.d0,121.d0,dble(s),121.d0,-1.d0,2)
-
-    !polH(:,k) = rho * r*l**(1.5)*(1.-2*modulo(ell,2))/(2.*pi)**0.5 * (eigU(:,ind)**2 + l*(l+1)*eigV(:,ind)**2)
     endif
    enddo
-!  enddo
  enddo
-!enddo
-!print *,rho(minloc(abs(r-0.7),1)),rho(minloc(abs(r-1.),1))
-!polT(:,2) = -eigU(:,ind)**2!*rho*r**2!( - eigU(:,ind)*eigU(:,indp) + eigU(:,ind)*eigV(:,indp) + eigU(:,indp)*eigV(:,ind))*rho*r !
-!polT(:,3) = -eigV(:,ind)**2!*rho*conl*2*r**2! * eigV(:,indp) *(conlp + conl - omeg(dble(s),0.0d0)**2)*rho*r
-!print *,conlp,conl,omeg(dble(s),0.d0)**2
 
-!stop
-end subroutine compute_kernels_inversion
+ write(llow,'(I3.3)') lmin
+ write(lhigh,'(I3.3)') lmax
+ call writefits('radius.fits',r,nr,1,1)
+ call writefits('kernels_'//llow//'_to_'//lhigh//'.fits',aimag(polR),nr,leng,1)
+ call writefits('soundspeed_kernels'//llow//'_to_'//lhigh//'.fits',real(polc),nr,leng,1)
+
+open(333,file='indices_'//llow//'_to_'//lhigh,action='write',status='replace')
+k = 0
+ do ell = lmin, lmax
+  do ord = orders(ell,1),orders(ell,2)
+   if (existence(ell,ord)) then
+    ellp = ell
+    k=k+1
+    print *,ellp, ell, ord, ordp, s,maxval(abs((polc(:,k)))),maxval(abs((polR(:,k))))
+    write(333,*), ellp,ell,ord,ordp,s
+    endif
+   enddo
+ enddo
+close(333)
+call exit()
+
+end subroutine compute_kernels_all
 
 
 !------------------
@@ -671,7 +639,7 @@ subroutine BINARYREADER
    endif
   endif
  enddo
-
+ 
 ! do i=1,nr
 !  print *,r(i),c2(i)**0.5*speednorm*1e-5/695989.4
 ! enddo
@@ -1910,7 +1878,7 @@ subroutine compute_Q3(dm, dl, dtee, des, tee, ess,Qfun,sig, year,cond)
  real*8 nj(-dl:dl), gamnl, gamnlp, nulmn,nulmnt, contwopi, dnu, conabs(-dtee:dtee,-des:des)
  real*8 lolim_mp,hilim_mp, lolim_m, hilim_m, Csum, ref, norm, sig, con0
  integer  minoff, maxoff!, dl, dm
- complex*16 con(-dtee:dtee,-des:des), compar, hnlp,Qfun(lmin+6:lmax-6,0:26,1:(2*des+1)*(2*dtee+1))
+ complex*16 con(-dtee:dtee,-des:des), compar, hnlp,Qfun(lmin+6:lmax-6,0:30,1:(2*des+1)*(2*dtee+1))
  character*2 tc, sc, spc, tpc,ynum
  character*3 lch_p
  logical lexist
@@ -1981,7 +1949,7 @@ subroutine compute_Q3(dm, dl, dtee, des, tee, ess,Qfun,sig, year,cond)
  dnu = 1./(86400.*360.) * 1e6
  norm = 2.5e-10 * 2.0 / nyears
 
- sigoff = floor((sig + t * trackrate)/dnu)!a1(ell)%ords(ord))/dnu) !
+ sigoff = floor((sig + t * (trackrate-0.0317))/dnu)!a1(ell)%ords(ord))/dnu) !
 
  minoff = floor((freqmin-150)/dnu)
  maxoff = floor((freqmax+150)/dnu)
@@ -2070,8 +2038,8 @@ subroutine compute_Q3(dm, dl, dtee, des, tee, ess,Qfun,sig, year,cond)
     nulmnt = nus(l)%mn(ems+t,ord)
     lolim_m = nulmn - gamnl
     hilim_m = nulmn + gamnl
-    lolim_mp = nulmnt - gamnl - (sig + t * trackrate)
-    hilim_mp = nulmnt + gamnl - (sig + t * trackrate)
+    lolim_mp = nulmnt - gamnl - (sig + t * (trackrate-0.0317))
+    hilim_mp = nulmnt + gamnl - (sig + t * (trackrate-0.0317))
       
     lolim_m = min(lolim_m,lolim_mp)
     hilim_m = max(hilim_m,hilim_mp)

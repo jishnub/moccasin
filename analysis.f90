@@ -1,29 +1,94 @@
 
  PROGRAM ANALYSIS
 
+  use f90getopt
   use data_analysis
 
   implicit none
-  integer ell, ellp, nyears, yearnum
+  integer ell, ellp, nyears, yearnum,i
   real*8 tfin, tstart
   character*2 yearc
   character*3 ellc
+  character*80 filename
 
- call getarg(1,yearc)
- read(yearc,*) yearnum
+  type(option_s):: opts(8)
+   opts(1) = option_s( "compute_norms", .false., 'a' )
+   opts(2) = option_s( "flow_analysis",  .true.,  'b' )
+   opts(3) = option_s( "yearnum", .true.,  'c')
+   opts(4) = option_s( "ell", .true.,  'd')
+   opts(5) = option_s( "ellp", .true.,  'e')
+   opts(6) = option_s( "nyears", .true.,  'f')
+   opts(7) = option_s( "help", .false.,  'h')
+   opts(8) = option_s( "instrument", .true.,  'i')
 
- call getarg(2,ellc)
- read(ellc,*) ell
+    compute_norms = .false.
+    flow_analysis = .true.
+    yearnum = -1
+    ell = -1
+    ellp = -1
+    nyears = -1
+    instrument = 'FFF'
 
- call getarg(3,ellc)
- read(ellc,*) ellp 
+    do
+        select case( getopt( "abcdefhi:", opts ) ) ! opts is optional (for longopts only)
+            case( char(0) )
+                exit
+            case( 'a' )
+                print *, 'option compute_norms'
+                compute_norms = .true.
+            case( 'b' )
+                if (optarg == 'F') flow_analysis = .false.
+            case( 'c' )
+                read(optarg,*) yearnum
+            case( 'd' )
+                read(optarg,*) ell
+            case( 'e' )
+                read(optarg,*) ellp
+            case( 'f' )
+                read(optarg,*) nyears
+            case( 'h' )
+                print *,'Need to provide options of the form ./analyze --ell 50 --ellp 60 --nyears 5 --yearnum 2 --instrument HMI'
+                print *,'Note that ellp has to be greater than or equal to ell'
+                print *,'Optional inputs are --compute_norms (default is not to compute normalization'
+                print *,'and --flow_analysis (default is true). If you want sound-speed analysis, run with --flow_analysis F'
+                print *,'Quitting.'
+                stop
+            case( 'i' )
+                if (optarg == 'HMI' .or. optarg == 'MDI') instrument = optarg
+                if (optarg == 'mdi' .or. optarg == 'hmi') instrument = upper(optarg)
+        end select
+    end do
+    if (nyears < 0 .or. ell < 0 .or. ellp < 0 .or. yearnum < 0 &
+        .or. instrument == 'FFF') then
+     print *,'Need ell, ellp, nyears, start year and instrument. Quitting.'
+     stop
+    elseif (ellp < ell) then
+     print *,'Need ellp >= ell. Quitting'
+     stop
+    endif
+ !call getarg(1,yearc)
+ !read(yearc,*) yearnum
 
- call getarg(4,yearc)
- read(yearc,*) nyears
+ !call getarg(2,ellc)
+ !read(ellc,*) ell
+
+ !call getarg(3,ellc)
+ !read(ellc,*) ellp 
+
+! ellp = ell
+ !call getarg(4,yearc)
+ !read(yearc,*) nyears
  !call readheader
  !stop
- MODE_ANALYSIS = .TRUE.
+! call glob_dir ()
+!  stop
+ !MODE_ANALYSIS = .TRUE.
  call cpu_time(tstart)
+!  ell = 36
+!  ellp = ell
+! yearnum =  1
+!nyears = 1
+
  call analyzethis(yearnum, ell, ellp, nyears) 
  call cpu_time(tfin)
 
@@ -37,7 +102,61 @@
  write(ellc,'(I3.3)') ell
  write(yearc,'(I2.2)') yearnum
 
- call system('rm /scratch/shravan/'//instrument//'/processed/'//yearc//'_'//ellc)
- call system('rm /home/shravan/QDP/lengs_'//ellc//'_'//ellc//'_'//yearc)
+ call system('rm /scr28/shravan/'//instrument//'/processed/'//yearc//'_'//ellc)
+ call system('rm /homea/shravan/QDP/lengs_'//ellc//'_'//ellc//'_'//yearc)
+
+ Contains
+
+ Subroutine glob_dir
+
+  implicit none
+  integer ell, ierr, j, daynum
+  character*3 ellc
+  character*4 dayc
+  character*100 dir
+
+  do ell=1,29!lmin,lmax
+   write(ellc, '(I3.3)') ell
+   call system('rm /scr28/shravan/locations/locs_ell_'//ellc)
+   call system('show_info -qP hmi.v_sht_gf_72d[]['//ellc//'] > /scr28/shravan/locations/locs_ell_'//ellc)
+   !call system('show_info -qP mdi.vw_V_sht_gf_72d[]['//ellc//'] > /scr28/shravan/locations/locs_ell_'//ellc)
+   open(22,file='/scr28/shravan/locations/locs_ell_'//ellc,action='read',position='rewind',status='unknown')
+   daynum = 6328
+   !daynum = 1216
+   do j=1,41
+   !do j=1,74
+    read(22,'(A)',IOSTAT=ierr) dir
+    if (ierr .ne.0 .and. j <41) then
+    !if (ierr .ne.0 .and. j <74) then
+     print *,'File not found', ell, daynum
+     exit
+    endif
+    write(dayc, '(I4.4)') daynum
+    print *,trim(adjustl(dir))//'/data.fits'//' /scr28/shravan/HMI/data/HMI_'//ellc//'_'//dayc//'.fits'
+    !print *,trim(adjustl(dir))//'/data.fits'//' /tmp29/shravan/MDI/data/MDI_'//ellc//'_'//dayc//'.fits'
+    call system('cp '//trim(adjustl(dir))//'/data.fits'//' /scr28/shravan/HMI/data/HMI_'//ellc//'_'//dayc//'.fits')
+    !call system('cp '//trim(adjustl(dir))//'/data.fits'//' /tmp29/shravan/MDI/data/MDI_'//ellc//'_'//dayc//'.fits')
+    daynum = daynum + 72
+   enddo
+  enddo
+
+ end subroutine glob_dir
+
+! ---------------------------------
+FUNCTION Upper(s1)  RESULT (s2)
+CHARACTER(*)       :: s1
+CHARACTER(LEN(s1)) :: s2
+CHARACTER          :: ch
+INTEGER,PARAMETER  :: DUC = ICHAR('a') - ICHAR('A')
+INTEGER            :: i
+
+DO i = 1,LEN(s1)
+   ch = s1(i:i)
+   IF (ch >= 'a'.AND.ch <= 'z') ch = CHAR(ICHAR(ch)-DUC)
+   s2(i:i) = ch
+END DO
+END FUNCTION Upper 
+
+! ---------------------------------
 
 end program ANALYSIS

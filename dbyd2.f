@@ -6,7 +6,7 @@ c       Revised 3/1998 for periodic conditions
 c
 C************************************************************
 	SUBROUTINE DBYD2(A,B,N1,N2,IBC)
-	PARAMETER(NMAX=700)
+	PARAMETER(NMAX=7800)
 C------------------------------------------------------------
 C  This routine evaluates the derivative of array B using 
 C  sixth-order compact differences and 

@@ -111,48 +111,49 @@ subroutine construct_frequencies(inpfile,ll,llp,ynum)
   real*8, allocatable, dimension(:,:) :: Po, splits, acoefs, adata
   integer, allocatable, dimension(:) :: indicesn
   logical lexist, mode_analysis
+  character*80 workdir
   mode_analysis = .false.
 
    !print *,ll,llp
 !  print *,mode_analysis
-  if (mode_analysis) then
+!  if (mode_analysis) then
 
+  i = getcwd(workdir)
    write(ellc,'(I3.3)') ll
    write(ellpc,'(I3.3)') llp
    write(yc,'(I2.2)') ynum
 !  endif
+   inquire(file=trim(adjustl(workdir))//'/lengs_'//ellc//'_'//ellpc//'_'//yc, exist=lexist)
+   if (lexist) call system('rm '//trim(workdir)//'/lengs_'//ellc//'_'//ellpc)
 
-   inquire(file='/home/shravan/QDP/lengs_'//ellc//'_'//ellpc//'_'//yc, exist=lexist)
-   if (lexist) call system("rm /home/shravan/QDP/lengs_"//ellc//"_"//ellpc)
+  call system("awk '{ print NF }' "//inpfile//" > "//trim(workdir)//"/lengs_"//ellc//"_"//ellpc//'_'//yc)
 
-  call system("awk '{ print NF }' "//inpfile//" > /home/shravan/QDP/lengs_"//ellc//"_"//ellpc//'_'//yc)
-
-  open(52,file='/home/shravan/QDP/lengs_'//ellc//'_'//ellpc//'_'//yc,&
+  open(52,file=trim(workdir)//'/lengs_'//ellc//'_'//ellpc//'_'//yc,&
            status='old',position='rewind',action='read')
   read(52,*) nrecs
   close(52)
 
 
-  call system("awk 'END {print NR}' "//inpfile//" > /home/shravan/QDP/lengs_"//ellc//"_"//ellpc//'_'//yc)
+  call system("awk 'END {print NR}' "//inpfile//" > "//trim(workdir)//"/lengs_"//ellc//"_"//ellpc//'_'//yc)
 
-  open(52,file='/home/shravan/QDP/lengs_'//ellc//'_'//ellpc//'_'//yc,&
+  open(52,file=trim(workdir)//'/lengs_'//ellc//'_'//ellpc//'_'//yc,&
            status='old',position='rewind',action='read')
   read(52,*) npoints
   close(52)
 
-  inquire(file='/home/shravan/QDP/lengs_'//ellc//'_'//ellpc//'_'//yc, exist=lexist)
-  if (lexist) call system("rm /home/shravan/QDP/lengs_"//ellc//"_"//ellpc//'_'//yc)
+  inquire(file=trim(workdir)//'/lengs_'//ellc//'_'//ellpc//'_'//yc, exist=lexist)
+  if (lexist) call system("rm "//trim(workdir)//"/lengs_"//ellc//"_"//ellpc//'_'//yc)
 
-  else
-   print *,'READING CANONICAL MODE PARAMETER FILE'
-   if (instrument == 'MDI') then
-    npoints = 2139
-   else
-    npoints = 2077
-   endif
-   nrecs = 84
+!  else
+ !  print *,'READING CANONICAL MODE PARAMETER FILE'
+ !  if (instrument == 'MDI') then
+ !   npoints = 2139
+ !  else
+ !   npoints = 2077
+ !  endif
+   !nrecs = 84
  
-  endif
+  !endif
   
   
   allocate(ells(npoints), ensall(npoints), freqs(npoints),amplitudes(npoints),&

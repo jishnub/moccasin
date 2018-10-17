@@ -1,6 +1,5 @@
 MODULE DATA_ANALYSIS
 
-! use kernels
  implicit none
  include 'params.i'
  include 'fftw3.f'
@@ -8,12 +7,13 @@ MODULE DATA_ANALYSIS
 
  real*8 dnu!, rotEarth
  !parameter(rotEarth = 0.0317)!\mu Hz
- real*8, allocatable, dimension(:,:) :: nu
- real*8, allocatable, dimension(:,:,:) :: rleaks, horleaks
+ real*8, allocatable, dimension(:,:), target :: nu
+ real*8, allocatable, dimension(:,:,:) :: rleaks2, horleaks2
+ real*8, allocatable, dimension(:,:,:) :: rleaks1, horleaks1
  real*8 freqnorm, rhonorm, speednorm !pi, rsun, msun, Gcon, 
  !parameter (pi = acos(-1.0d0), Gcon = 6.678e-8)
 
- complex*16, allocatable, dimension(:,:) :: shtdata, shtdatap
+ complex*16, allocatable, dimension(:,:), target :: shtdata, shtdatap
 
  type :: Cell
   complex*16, allocatable, dimension(:) :: tee
@@ -88,29 +88,38 @@ function Pf(l, N)
    em(i) = i
   enddo 
 
+  P = 0.0
   P(:,0) = l
   P(:,1) = em
   mbyL = em/Lsq
+  Pf = 0.0
 
   P(:,2) = Lsq**2.d0/(l-0.5d0) * legendre(2,mbyL,twoellplus1)
 
   do i=3,N
     Pdp = Lsq*legendre(i,mbyL,twoellplus1)
-    
     c0 = sum(Pdp)/(l*(2*l+1))
     Pp = Pdp - c0 * P(:,0)
 
+!   print *,Pp,i
     do j=1,i-1
-        cj = sum(Pdp*P(:,j))/sum(P(:,j)**2.)
-        Pp = Pp - cj * P(:,j)
+     cj = sum(P(:,j)**2)
+     if (cj .ne. 0) &
+      cj = sum(Pdp*P(:,j))/cj
+     Pp = Pp - cj * P(:,j)
     enddo
-    P(:,i) =  l * Pp/Pp(l)
+!    if (Pp(l) .ne. 0) then
+     P(:,i) =  l * Pp/(Pp(l) + 1e-14)
+!if (i==3) print *,Pp(l),P(:,j),cj,j!,Pp
+!    else
+!     exit
+!    endif
   enddo
 
 !Podd = P(:,1:N:2)
+!stop
 
   Pf = P(:,1:N)
-
 end function Pf
 
 !------------------------------------------------------------------------
@@ -142,6 +151,7 @@ subroutine construct_frequencies(inpfile,ll,llp,ynum)
   character*(*) inpfile
   character*3 ellc, ellpc
   character*2 yc
+  character*80 workdir
   !parameter(npoints = 2159)
   !real*8 splits(24,npoints)
   real*8, dimension(:), allocatable :: ells, ensall, freqs, amplitudes, &
@@ -151,33 +161,35 @@ subroutine construct_frequencies(inpfile,ll,llp,ynum)
   integer, allocatable, dimension(:) :: indicesn
   logical lexist
 
-  l = ll
+  ordmin = -1
+  ordmax = 100
   write(ellc,'(I3.3)') ll
   write(ellpc,'(I3.3)') llp
   write(yc,'(I2.2)') ynum
-  inquire(file='/home/shravan/QDP/lengs_'//ellc//'_'//ellpc//'_'//yc, exist=lexist)
-  if (lexist) call system("rm /home/shravan/QDP/lengs_"//ellc//"_"//ellpc//'_'//yc)
+  i = getcwd(workdir)
+  call system("awk '{ print NF }' "//inpfile//" >"//trim(adjustl(workdir))//"/lengs_"//ellc//"_"//ellpc//'_'//yc)
 
-  call system("awk '{ print NF }' "//inpfile//" > /home/shravan/QDP/lengs_"//ellc//"_"//ellpc//'_'//yc)
+  inquire(file=trim(adjustl(workdir))//'/lengs_'//ellc//'_'//ellpc//'_'//yc, exist=lexist)
+  if (lexist) call system('rm '//trim(adjustl(workdir))//'/lengs_'//ellc//'_'//ellpc//'_'//yc)
 
-  open(52,file='/home/shravan/QDP/lengs_'//ellc//'_'//ellpc//'_'//yc,&
+  call system("awk '{ print NF }' "//inpfile//" > "//trim(adjustl(workdir))//"/lengs_"//ellc//"_"//ellpc//'_'//yc)
+
+  open(52,file=trim(adjustl(workdir))//'/lengs_'//ellc//'_'//ellpc//'_'//yc,&
            status='old',position='rewind',action='read')
   read(52,*) nrecs
   close(52)
 
-  call system("awk 'END {print NR}' "//inpfile//" > /home/shravan/QDP/lengs_"//ellc//"_"//ellpc//'_'//yc)
+  call system("awk 'END {print NR}' "//inpfile//" > "//trim(adjustl(workdir))//"/lengs_"//ellc//"_"//ellpc//'_'//yc)
 
-  open(52,file='/home/shravan/QDP/lengs_'//ellc//'_'//ellpc//'_'//yc,&
+  open(52,file=trim(adjustl(workdir))//'/lengs_'//ellc//'_'//ellpc//'_'//yc,&
            status='old',position='rewind',action='read')
   read(52,*) npoints
   close(52)
 
   
-
   allocate(ells(npoints), ensall(npoints), freqs(npoints),amplitudes(npoints),&
         fwhmall(npoints), backgall(npoints), splits(nrecs,npoints), &
         acoefs(1:nsplits,npoints))
-
   open(334,file=inpfile,status='old',position='rewind',action='read')
   do i=1,npoints
    read(334, *) splits(:,i)
@@ -202,8 +214,7 @@ subroutine construct_frequencies(inpfile,ll,llp,ynum)
 !%a6 (18), sigmas (6) - total 24
 
 !  N = 3; !% maximum number of odd splits
-
-  do l = ll-6, ll+ 6!lmin,lmax
+  do l = max(ll-6,lmin), min(llp+ 6,lmax)!lmin,lmax
 
     ndata = 0
     do i=1,npoints
@@ -243,25 +254,30 @@ subroutine construct_frequencies(inpfile,ll,llp,ynum)
     a1(l)%ords(indicesn) = acoefs(1,ind_data(1:ndata))
     Po(-l:l,:) = Pf(l, Nsplits)
 
-    if (l == ll)  then
-     ordmin = int(en(l)%ords(minord - 1 +minloc(abs(freqmin - freqnu(l)%ords(:)),1)))
-     ordmax = int(en(l)%ords(minord-1+minloc(abs(freqmax - freqnu(l)%ords(:)),1)))
-    endif
+  if (l == ll .or. l == llp) then
+   ordmin = max(int(en(l)%ords(minord-1 +minloc(abs(freqmin - freqnu(l)%ords(:)),1))),&
+               ordmin)
+   ordmax = min(int(en(l)%ords(minord-1+minloc(abs(freqmax - freqnu(l)%ords(:)),1))),ordmax)
+
+  endif
+
+  
 
     allocate(nus(l)%mn(-l:l,minord:maxord))
 
-!    print *,minord,maxord, ordmin,ordmax
     do i=minord,maxord
      nus(l)%mn(:,i) = freqnu(l)%ords(i) 
      !do j=1,nsplits/2
 
      do j=-l,l ! SYNODIC CORRECTION TO THE ROTATION RATE - ONLY THE a1 COEFFICIENT IS ALTERED
        nus(l)%mn(j,i) = nus(l)%mn(j,i) + (adata(1,i) - rotEarth)* Po(j,1)!  Po(j,1)  - rotEarth
+  !if (l==1) print *,Po(j,1)
      enddo
 
      do j=2,nsplits ! NOW ADDING THE REST OF THE SPLITTING COEFFICIENTS
       nus(l)%mn(:,i) = nus(l)%mn(:,i) + adata(j,i) * Po(:,j)!a1_data(i)*Po(:,1) + a3_data(i)*Po(:,2) &
              !+ a5_data(i)*Po(:,3)
+
      enddo
 
     enddo
@@ -287,95 +303,127 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
  Use Ziggurat
  implicit none
 
- integer order, ell, slow, s, m, mp, maxoff, offseti, yearnum, eltp, i
+ integer order, ell, slow, s, m, mp, maxoff, offseti, yearnum, eltp, i, ii
  integer indm, indmp, indm_nu, indmp_nu, ind_nu, t, minoff,  sigind, seed
  integer ordlow, ordhigh,sigoff, siglow, sighigh, ellp, ellt, nyears
  integer emp, emdp, mmin, mmax, signemp, signempt, shif, dl, dm, dmp
  integer minoffp, maxoffp, eldp, delm, dell,lolim,hilim,refind,indst
- integer intarr(1:10000), j, k, ierr, emdpmin, emdpmax, reals, nreals
+ integer delmmin, delmmax, basel(1:2), nsig, deltast, daystart
+ integer intarr(1:15000), j, k, ierr, emdpmin, emdpmax, reals, nreals
  parameter(delm = 15, dell = 6, nreals = 10)
  integer, allocatable, dimension(:) :: minoffarr, maxoffarr, seeds
 
  character*4 daynum
- character*3 lch, lch_p, trackch
+ character*3 lch, lch_p, trackch, lchtemp, lowinst
  character*2 ynum, ynum2
 ! character*1 omin, omax
 
- real*8 hilim_mp, lolim_mp, lolim_m, hilim_m, gamnlp, cons, con0, defcon
+ real*8 hilim_mp, lolim_mp, lolim_m, hilim_m, gamnlp, cons, con0, defcon,samprate
  !real*8 hilim_empt, lolim_empt, lolim_emp, hilim_emp
- real *8 omega(nt) ,dnu, contwopi, sig, nulmn, nulmnt, gamnl, consp
- real*8 nus_m, nus_mp, tstart, tfin, test(-1:1), nj(-6:6), con,noisevar2(nreals)
- real*8  den(smin:smax), conr, mix(-6:6), fmode, compar, ref, temp1
- real*8 noisehalf(1:10000),noiseother(1:10000),noisevar1(nreals,smin:smax)
- complex*16, dimension(1:10000,1:nreals) :: temphalf, tempother
+ real *8 omega(nt) ,dnu, contwopi, sig, nulmn, nulmnt, gamnl, consp,nj2(-6:6)
+ real*8 nus_m, nus_mp, tstart, tfin, test(-1:1), nj1(-6:6), con,noisevar2(nreals)
+ real*8  den(smin:smax), conr, mix1(-6:6), fmode, compar, ref, temp1,mix2(-6:6)
+ real*8 noisehalf(1:15000),noiseother(1:15000),noisevar1(nreals,smin:smax)
+ complex*16, dimension(1:15000,1:nreals) :: temphalf, tempother
  real*8, dimension(1:40000) :: vec
  real*8, dimension(:), allocatable :: tempm
- real*8, allocatable, dimension(:,:) :: leaks, mask, tempr, leaksp, norms
- real*8, allocatable, dimension(:,:,:) :: abspow
+ real*8, allocatable, dimension(:,:) :: leaks1, leaks2, mask, tempr, leaksp
+ real*8, allocatable, dimension(:,:,:) :: abspow1, abspow2, norms
+ real*8, pointer, dimension(:) :: arr
  complex*16 conp
- complex*16, dimension(:,:,:), allocatable :: limitpow
+ complex*16, dimension(:,:,:), allocatable :: limitpow1, limitpow2
  complex*16, allocatable, dimension(:,:) ::  prefac
- logical compute_noise, lexist, compute_ab_initio
+ logical compute_noise, lexist, compute_ab_initio, compute_varnoise
+ logical restart
+ character*80 prefix, workdir, freqdir
 
+ basel = (/ell, ellp/)
  
+ i = getcwd(workdir)
 ! defcon = 1.6e-11 / nyears  
 ! if (instrument == 'HMI') defcon = 2.95e-11 / nyears  
  contwopi  = 1.d0/(2*pi)**2
  !compute_noise = .false.
  compute_noise = .true.
  compute_ab_initio = .true.
- if (yearnum == 1) compute_noise = .true.
+! compute_norms = .false.
+ compute_varnoise = .false.
+ if (yearnum == 1) compute_varnoise = .true.
+ compute_varnoise = .false.
 
  write(trackch,'(I3.3)') nint(1e3*trackrate)
  call compute_wig3j_data_analysis(ell, ellp)
  call cpu_time(tstart)
- if (compute_noise .and. compute_ab_initio) call read_leakage(6,15,ell)
+ if (compute_noise .and. compute_ab_initio) call read_leakage(6,15,ell,ellp)
  call cpu_time(tfin)
  print *,'Read time (leakage):',tfin - tstart
 
- !i = 1
- !call random_seed(size = i)
- !allocate(seeds(i))
- !call random_seed(get=seeds)
- !call random_seed(get=seeds)
- !seed = seeds(size(seeds))
-
-    i = 42
-   CALL zigset( i )
+ i = 42
+ CALL zigset( i )
  write(lch,'(I3.3)') ell
  write(lch_p,'(I3.3)') ellp
+
 
  write(ynum,'(I2.2)') yearnum
  write(ynum2,'(I2.2)') yearnum+nyears-1
 
- open(102,file='/scratch/shravan/'//instrument//'/tracking'//trackch//'/bcoef_metadata_l_'//lch//'_lp_'//lch_p//&
-     '_year_'//ynum//'_'//ynum2,action='write',status='unknown', position='rewind')
-
-
- open(112,file='/scratch/shravan/'//instrument//'/tracking'//trackch//'/status_l_'//lch//'_lp_'//lch_p//&
-     '_year_'//ynum//'_'//ynum2,action='write',status='unknown', position='rewind')
-
-
- if (instrument == 'MDI') then 
-   t = 1216 + (yearnum -1)*360
-   write(daynum, '(I4.4)') t
-   call construct_frequencies ('/scratch/data/'//daynum//'/m10q.36', ell, &
-                               ellp,yearnum)
- elseif (instrument == 'HMI') then 
-   t = 6328 + (yearnum -1)*360
-   write(daynum, '(I4.4)') t
-   call construct_frequencies ('/scratch/data/hmi.m10qr.'//daynum//'.36', ell, &
-                               ellp,yearnum)
-
+ if (instrument =='HMI') then
+   prefix = outhmidir
+   freqdir = freqhmidir
+   nt = 360 * 24 * 80 * nyears
+   daystart = 6328
+   samprate = 45.0
+ elseif (instrument =='MDI') then
+   prefix = outmdidir
+   freqdir = freqmdidir
+   nt = 360 * 24 * 60 * nyears
+   samprate = 60.0
+   deltast = 0
+   if (yearnum .gt. 2)  deltast = 288 ! 2224 - 1936
+   daystart = 1216 + deltast
  endif
+ 
+ !if (instrument == 'MDI') then 
+  t = daystart + (yearnum -1)*360
+  write(daynum, '(I4.4)') t
+  lowinst = Lower(instrument)
+  call construct_frequencies (adjustl(trim(freqdir))//'/'//lowinst//'.'//daynum//'.36', ell, &
+                               ellp,yearnum)
+  ! prefix = '/scratch/shravan/'//instrument
+  if (.not. compute_norms) then
+   call system('mkdir -p '//adjustl(trim(prefix)))
+   call system('mkdir -p '//adjustl(trim(prefix))//'/tracking'//trackch)
+   call system('mkdir -p '//adjustl(trim(prefix))//'/processed')
+
+   open(102,file=adjustl(trim(prefix))//'/tracking'//trackch//'/bcoef_metadata_l_'//lch//'_lp_'//lch_p//&
+    '_year_'//ynum//'_'//ynum2,action='write',status='unknown', position='rewind')
 
 
- allocate(b_coefs(smin:smax,ordmin:ordmax,sigmin:sigmax),tempr(609,305),&
-   noise(smin:smax,ordmin:ordmax,sigmin:sigmax),&
-   noisevar(smin:smax,ordmin:ordmax,sigmin:sigmax))
+   open(112,file=adjustl(trim(prefix))//'/tracking'//trackch//'/status_l_'//lch//'_lp_'//lch_p//&
+    '_year_'//ynum//'_'//ynum2,action='write',status='unknown', position='rewind')
 
- call readfits('/home/shravan/QDP/leaks.fits',tempr,609,305,1)
+  elseif (compute_norms) then
+   call system('mkdir -p '//adjustl(trim(prefix))//'/norms')
+  endif
+! elseif (instrument == 'HMI') then 
 
+   !prefix = '/scratch/shravan/'//instrument
+!   open(102,file=adjustl(trim(prefix))//'/tracking'//trackch//'/bcoef_metadata_l_'//lch//'_lp_'//lch_p//&
+!     '_year_'//ynum//'_'//ynum2,action='write',status='unknown', position='rewind')
+
+
+!   open(112,file=adjustl(trim(prefix))//'/tracking'//trackch//'/status_l_'//lch//'_lp_'//lch_p//&
+!     '_year_'//ynum//'_'//ynum2,action='write',status='unknown', position='rewind')
+
+!   t = 6328 + (yearnum -1)*360
+!   write(daynum, '(I4.4)') t
+!   call construct_frequencies (adjustl(trim(freqmdidir))//'/hmi.'//daynum//'.36', ell, &
+!                               ellp,yearnum)
+
+! endif
+
+ allocate(tempr(609,305))
+ call readfits(trim(adjustl(workdir))//'/leaks.fits',tempr,609,305,1)
  do ellt = 0,304
   allocate(leakage(ellt)%ems(-ellt:ellt))
   leakage(ellt)%ems(-ellt:ellt) = tempr(1:2*ellt+1,ellt+1)
@@ -383,194 +431,282 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
  deallocate(tempr)
 
 
- if (INSTRUMENT == 'MDI') nt = 360 * 24 * 60 * nyears
- if (INSTRUMENT == 'HMI') nt = 360 * 24 * 80 * nyears
-
+! if (INSTRUMENT == 'MDI') nt = 360 * 24 * 60 * nyears
+! if (INSTRUMENT == 'HMI') nt = 360 * 24 * 80 * nyears
 
   call cpu_time(tstart)
 
-  if (allocated(shtdatap)) deallocate(shtdatap)
-  allocate(shtdatap(0:nt-1, 0:ellp))
-  shtdatap = shtdat(yearnum, ellp, nyears)
-
   if (.not. allocated(nu)) then
    allocate(nu(0:nt-1,1))
-   if( instrument == 'MDI') nu(0:nt-1,:) = distmat(nt,1)/(nt*60.) * 10**6
-   if( instrument == 'HMI') nu(0:nt-1,:) = distmat(nt,1)/(nt*45.) * 10**6
+   nu = 1.d0
+   if (.not. flow_analysis) arr => nu(1:nt-1,1)
+   nu(0:nt-1,:) = distmat(nt,1)/(nt*samprate) * 10**6
+   !if( instrument == 'MDI') nu(0:nt-1,:) = distmat(nt,1)/(nt*60.) * 10**6
+   !if( instrument == 'HMI') nu(0:nt-1,:) = distmat(nt,1)/(nt*45.) * 10**6
    dnu = nu(2,1) - nu(1,1)
   endif
+  if (flow_analysis) arr => nu(1:nt-1,1)
+
+  nsig = ceiling((sigmax - sigmin)/(dnu*dsig))+1
+
+  allocate(b_coefs(smin:smax,ordmin:ordmax,1:nsig),&
+   noise(smin:smax,ordmin:ordmax,1:nsig))
+  
+  if (compute_varnoise) & 
+   allocate(noisevar(smin:smax,ordmin:ordmax,1:nsig))
+
 
   if (allocated(shtdata)) deallocate(shtdata)
   allocate(shtdata(0:nt-1, -ell:ell))
-
-  if (ellp == ell) shtdata(:,0:ell) = shtdatap
-  if (ellp .ne. ell) shtdata = shtdat(yearnum, ell, nyears)
+  shtdata(:,0:ell) = shtdat(yearnum, ell, nyears)
 
   do m = -ell,-1
    do offseti = 1, nt-1
     shtdata(offseti,m) = (1-2*modulo(-m,2))*conjg(shtdata(nt-offseti,-m))
    enddo
   enddo
+  
+  if (.not. compute_norms) then
+   if (allocated(shtdatap)) deallocate(shtdatap)
+   allocate(shtdatap(0:nt-1, -ellp:ellp))
+   if (ellp .ne. ell) then
+    shtdatap(:,0:ellp) = shtdat(yearnum, ellp, nyears)
+   else
+    shtdatap(:,0:ellp) = shtdata(:,0:ell)
+   endif
+
+   do m = -ellp,-1
+    do offseti = 1, nt-1
+     shtdatap(offseti,m) = (1-2*modulo(-m,2))*conjg(shtdatap(nt-offseti,-m))
+    enddo
+   enddo
+  endif
   call cpu_time(tfin)
   print *,'Read time (data):',tfin - tstart
 
   call cpu_time(tstart)
     !% gammas and nus_res are in muHz
     !% amps are unknown units
-   allocate(norms(ordmin:ordmax,-dell:dell))
+
+   allocate(norms(ordmin:ordmax,-dell:dell,1:2))
    norms = 0.d0!1.35e-10/nyears
-   do dl = -dell,dell
-    eldp = ell + dl
-    write(lch_p,'(I3.3)') eldp
-    inquire(file='/scratch/shravan/'//instrument//'/norms/'//instrument//&
-             '_'//lch_p//'_year_'//ynum,exist=lexist)
-    if (lexist) then
-     open(1555,file='/scratch/shravan/'//instrument//'/norms/'//instrument//&
-             '_'//lch_p//'_year_'//ynum,status='old',action='read')
-     do  
-      read(1555,*,IOSTAT=ierr) con0, order
-      if (ierr .ne.0) exit
-      if (order .ge. ordmin .and. order .le. ordmax) &
-       norms(order,dl) = con0/nyears
+
+
+   if (.not. compute_norms) then
+    do ii=1,2
+     do dl = -dell,dell
+      eldp = basel(ii)+ dl
+      write(lchtemp,'(I3.3)') eldp
+      !if (instrument =='HMI') 
+      inquire(file=adjustl(trim(prefix))//'/norms/'//instrument//&
+             '_'//lchtemp//'_year_'//ynum,exist=lexist)
+
+     !if (instrument =='MDI') inquire(file='/tmp29/shravan/'//instrument//'/norms/'//instrument//&
+     !        '_'//lchtemp//'_year_'//ynum,exist=lexist)
+
+      if (lexist) then
+     ! if (instrument=='HMI') 
+       open(1555,file=adjustl(trim(prefix))//'/norms/'//instrument//&
+             '_'//lchtemp//'_year_'//ynum,status='old',action='read')
+
+!      if (instrument=='MDI') open(1555,file='/tmp29/shravan/'//instrument//'/norms/'//instrument//&
+!             '_'//lchtemp//'_year_'//ynum,status='old',action='read')
+
+       do  
+        read(1555,*,IOSTAT=ierr) con0, order
+        if (ierr .ne.0) exit
+        if (order .ge. ordmin .and. order .le. ordmax) &
+         norms(order,dl,ii) = con0/nyears
+       enddo
+       close(1555)
+      endif
      enddo
-     close(1555)
-    endif
-   enddo
-  lch_p = lch
+    enddo
 
-!   open(144,file='/scratch/shravan/'//instrument//&
-!     '/norms/'//instrument//'_'//lch//'_year_'//ynum,status='unknown')
+    do order = ordmin,ordmax
+      do sigoff = 1,nsig
+       do s = smin, smax
+        allocate(b_coefs(s,order,sigoff)%tee(-s:s),noise(s,order,sigoff)%tee(-s:s))
+        b_coefs(s,order,sigoff)%tee = 0.d0
+        noise(s,order,sigoff)%tee = 0.d0
+       enddo
+      enddo
+    enddo
 
-   do order = ordmin,ordmax
-     do sigoff = sigmin, sigmax
-      do s = smin, smax
-       allocate(b_coefs(s,order,sigoff)%tee(-s:s),noise(s,order,sigoff)%tee(-s:s),&
-              noisevar(s,order,sigoff)%tee(-s:s))
-       b_coefs(s,order,sigoff)%tee = 0.d0
-       noise(s,order,sigoff)%tee = 0.d0
-       noisevar(s,order,sigoff)%tee = 0.d0
+    if (compute_varnoise) then
+     do order = ordmin,ordmax
+      do sigoff = 1,nsig
+       do s = smin, smax
+         allocate(noisevar(s,order,sigoff)%tee(-s:s))
+         noisevar(s,order,sigoff)%tee = 0.d0
+       enddo
       enddo
      enddo
-   enddo
+    endif
+
+
+   else 
+   ! if (instrument =='HMI') 
+    open(144,file=adjustl(trim(prefix))//'/norms/'//instrument//'_'//lch//'_year_'//ynum,status='unknown')
+
+   ! if (instrument =='MDI') open(144,file='/tmp29/shravan/'//instrument//& ! comment out in production mode
+   !  '/norms/'//instrument//'_'//lch//'_year_'//ynum,status='unknown')
+
+   endif
+
 
    do order = ordmin, ordmax
-     if (freqnu(ell)%ords(order) < freqmin) cycle
+     if ((freqnu(ell)%ords(order) < freqmin) .or. (isnan(freqnu(ell)%ords(order))) .or. &
+      (freqnu(ellp)%ords(order) < freqmin) .or. (isnan(freqnu(ellp)%ords(order))) ) cycle
      minoff = floor((nus(ell)%mn(-ell,order) - 150.d0)/dnu) - 1
-     maxoff = floor((nus(ell)%mn(ell,order) + 150.d0)/dnu) + 1
+     maxoff = floor((nus(ellp)%mn(ellp,order) + 150.d0)/dnu) + 1
 
-     allocate(prefac(minoff:maxoff,-ell:ell),minoffarr(-ell:ell),tempm(minoff:maxoff),& 
-     maxoffarr(-ell:ell),mask(minoff:maxoff,-ell:ell),& !,corr(minoff:maxoff)
-     leaks(-delm:delm,-ell:ell),abspow(minoff:maxoff,-ell-dell:ell+dell,-dell:dell), &
-     limitpow(minoff:maxoff,-ell-dell:ell+dell,-dell:dell))!,corr(minoff:maxoff))
+     allocate(prefac(minoff:maxoff,-ellp:ellp),minoffarr(-ellp:ellp),tempm(minoff:maxoff),& 
+     maxoffarr(-ellp:ellp),mask(minoff:maxoff,-ellp:ellp),& !,corr(minoff:maxoff)
+     leaks1(-delm:delm,-ell:ell),abspow1(minoff:maxoff,-ell-dell:ell+dell,-dell:dell), &
+     limitpow1(minoff:maxoff,-ell-dell:ell+dell,-dell:dell))
 
-     abspow = 0.d0
-     limitpow = 0.d0
-     leaks = 0.d0
+     if (.not. compute_norms) &
+     allocate(leaks2(-delm:delm,-ellp:ellp),abspow2(minoff:maxoff,-ellp-dell:ellp+dell,-dell:dell), &
+     limitpow2(minoff:maxoff,-ellp-dell:ellp+dell,-dell:dell))!,corr(minoff:maxoff))
+
+     abspow1 = 0.d0
+     leaks1 = 0.d0
      prefac = 0.d0
-     nj = 0.d0
+     nj1 = 0.d0
+     nj2 = 0.d0
+     mix1 = 0.0
+     mix2 = 0.0
+     limitpow1 = 0.d0
+ 
+     if (.not. compute_norms) then
+      abspow2 = 0.d0
+      limitpow2 = 0.d0
+      leaks2 = 0.d0
+     endif
 
      minoffp = minoff
      maxoffp = maxoff
 
+
      conr = 0.d0
+     do ii=1,2
+      if (ii==2 .and. compute_norms) cycle
+
       do dl = -dell,dell !0,0!
-       mix(dl) =0.d0
-       nj(dl) = 0.d0
-       eldp = ell + dl
+       eldp = basel(ii) + dl
+       if (eldp > lmax .or. eldp < lmin) cycle
        if ((lbound(freqnu(eldp)%ords,1) .gt. order) .or. &
              (ubound(freqnu(eldp)%ords,1) .lt. order)) cycle
 
-       if (eldp > lmax .or. eldp < lmin .or. freqnu(eldp)%ords(order) .lt. freqmin) cycle
+       if( freqnu(eldp)%ords(order) .lt. freqmin) cycle
 
-       con0 = norms(order,dl)
+
+
+       con0 = norms(order,dl,ii)
        if (con0 > 1e-6) & 
         con0 = 0.d0!sum(norms(:,dl))/size(norms(:,dl),1)
 
-!       con0 = 1.d0
+       if (compute_norms) con0 = 1.d0 !comment this out in production mode
        fmode = 278.6/696.d0  * 1e6 * (eldp+0.5) /(4.*pi*2)
-       mix(dl) = fmode/freqnu(eldp)%ords(order)**2
+       if (ii==1) mix1(dl) = fmode/freqnu(eldp)%ords(order)**2
+       if (ii==2) mix2(dl) = fmode/freqnu(eldp)%ords(order)**2
        gamnlp = fwhm(eldp)%ords(order)
-       nj(dl) = con0 * gamnlp * (amps(eldp)%ords(order) *  & !
+       if (ii==1) nj1(dl) = con0 * gamnlp * (amps(eldp)%ords(order) *  & !
+       freqnu(eldp)%ords(order)) **2 * (2*pi)**3 * 1e-18
+       if (ii==2) nj2(dl) = con0 * gamnlp * (amps(eldp)%ords(order) *  & !
        freqnu(eldp)%ords(order)) **2 * (2*pi)**3 * 1e-18
 
        do emdp =-eldp,eldp
         nulmn = nus(eldp)%mn(emdp,order)
-        minoff = max(floor((nulmn - 15*gamnlp)/dnu) -sigmax*3,minoffp)
-        maxoff = min(floor((nulmn + 15*gamnlp)/dnu) + sigmax*3,maxoffp)
-        limitpow(minoff:maxoff,emdp,dl) = - 1.d0/(nu(minoff:maxoff,1)**2 - &
+        minoff = max(floor((nulmn - 15*gamnlp)/dnu) -floor(sigmax/dnu)*3,minoffp)
+        maxoff = min(floor((nulmn + 15*gamnlp)/dnu) + floor(sigmax/dnu)*3,maxoffp)
+        if(ii==1)limitpow1(minoff:maxoff,emdp,dl) = - 1.d0/(nu(minoff:maxoff,1)**2 - &
         (nulmn - cmplx(0.d0,0.5d0)*gamnlp)**2) * 1e12 * contwopi
-        abspow(minoff:maxoff,emdp,dl) = abs(limitpow(minoff:maxoff,emdp,dl))**2
+        if(ii==2)limitpow2(minoff:maxoff,emdp,dl) = - 1.d0/(nu(minoff:maxoff,1)**2 - &
+        (nulmn - cmplx(0.d0,0.5d0)*gamnlp)**2) * 1e12 * contwopi
+
+        if (ii==1) abspow1(minoff:maxoff,emdp,dl) = abs(limitpow1(minoff:maxoff,emdp,dl))**2
+        if (ii==2) abspow2(minoff:maxoff,emdp,dl) = abs(limitpow2(minoff:maxoff,emdp,dl))**2
        enddo
 
-!       leaks = (rleaks(-delm:delm,:,dl) + mix(dl) * horleaks(-delm:delm,:,dl))**2
-!       do m=-ell,ell
+        if (compute_norms) then
+         delmmin = max(-delm, -eldp)
+         delmmax = min(delm, eldp)
+         leaks1 = (rleaks1(:,:,dl) + mix1(dl) * horleaks1(:,:,dl))**2
+         do m=-ell,ell
+          lolim = floor((nus(ell)%mn(m,order) - 2*gamnlp)/dnu) 
+          hilim = floor((nus(ell)%mn(m,order) + 2*gamnlp)/dnu)
+          do emdp = max(m-delm,-eldp), min(m+delm,eldp)
+           dm = emdp - m
+           conr = sum(abspow1(lolim:hilim,emdp,dl))*nj1(dl)*leaks1(dm,m) + conr
+          enddo
+         enddo
+         if (dl==0) then !print *,nj(dl),freqnu(eldp)%ords(order),gamnlp,'aa',order
 
-!        lolim = floor((nus(ell)%mn(m,order) - 2*gamnlp)/dnu) 
-!        hilim = floor((nus(ell)%mn(m,order) + 2*gamnlp)/dnu)
+         
+          lolim = floor((nus(ell)%mn(0,order) - 2*gamnlp)/dnu) 
+          hilim = floor((nus(ell)%mn(0,order) + 2*gamnlp)/dnu)
+          con = sum(abs(shtdata(lolim:hilim,0)**2.))
 
-!        do emdp = max(m-delm,-eldp), min(m+delm,eldp)
-!         dm = emdp - m
-!         conr = sum(abspow(lolim:hilim,emdp,dl))*nj(dl)*leaks(dm,m) + conr
-!        enddo
-!       enddo
+          do m=1,ell
+          
+           lolim = floor((nus(ell)%mn(m,order) - 2*gamnlp)/dnu) 
+           hilim = floor((nus(ell)%mn(m,order) + 2*gamnlp)/dnu)
 
-!       if (dl==0) then !print *,nj(dl),freqnu(eldp)%ords(order),gamnlp,'aa',order
-!
-!         lolim = floor((nus(ell)%mn(0,order) - 2*gamnlp)/dnu) 
-!         hilim = floor((nus(ell)%mn(0,order) + 2*gamnlp)/dnu)
-!         con = sum(abs(shtdata(lolim:hilim,0)**2.))
-!         do m=1,ell
-!          
-!          lolim = floor((nus(ell)%mn(m,order) - 2*gamnlp)/dnu) 
-!          hilim = floor((nus(ell)%mn(m,order) + 2*gamnlp)/dnu)
-!
-!          con = sum(abs(shtdata(lolim:hilim,m)**2.)) + con
-!
-!          lolim = floor((nus(ell)%mn(-m,order) - 2*gamnlp)/dnu) 
-!          hilim = floor((nus(ell)%mn(-m,order) + 2*gamnlp)/dnu)
-!
-!          con = sum(abs(shtdata(lolim:hilim,-m)**2.)) + con
-!
-!          enddo
-!        
-!       endif
+           con = sum(abs(shtdata(lolim:hilim,m)**2.)) + con
+           lolim = floor((nus(ell)%mn(-m,order) - 2*gamnlp)/dnu) 
+           hilim = floor((nus(ell)%mn(-m,order) + 2*gamnlp)/dnu)
+           con = sum(abs(shtdata(lolim:hilim,-m)**2.)) + con
 
-      enddo
+          enddo
+        
+         endif ! dl==0 if
+        endif ! compute_norms if
 
-!      if (isnan(conr)) con = 0.d0
-!      write(144,*) con/conr,order!nus(ell)%mn(m,order),m
-!      print *,con,conr,con/conr,order!,nj,freqnu(ell-dell:ell+dell)%ords(order)
-!      deallocate(prefac, minoffarr, maxoffarr, limitpow, abspow,leaks,tempm,mask) 
-!      cycle
+       enddo ! dl
+      enddo ! ii=1,2
 
+       if (compute_norms) then
+   !print *,con,conr,isnan(conr)
+        if (isnan(conr)) con = 0.d0
+        print *,con,conr,con/conr,order!,nj,freqnu(ell-dell:ell+dell)%ords(order)
+        write(144,*) con/conr,order!nus(ell)%mn(m,order),m
+        deallocate(prefac, minoffarr, maxoffarr, limitpow1, abspow1,leaks1,&
+         tempm,mask) 
+        cycle
+       endif
+!! here
       gamnl = fwhm(ell)%ords(order)
+      gamnlp = fwhm(ellp)%ords(order)
 
-      if (any(en(ell)%ords .eq. order) .and. (freqnu(ellp)%ords(order) .ne. 0)) then
+      if (any(en(ell)%ords .eq. order) .and. (freqnu(ell)%ords(order) .ne. 0) &
+       .and. any(en(ellp)%ords .eq. order) .and. (freqnu(ellp)%ords(order) .ne. 0)) then
 
          do t = -smax, smax 
 
-          if (t==0) cycle
+!          if (t==0) cycle
           slow = max(smin, abs(t))
-          mmin = max(-ell,-ell-t)
-          mmax = min(ell,ell-t)
+          mmin = max(-ell,-ellp-t)
+          mmax = min(ell,ellp-t)
 
            ! Tracking rate! trackrate
-          refind = nint(t*trackrate/dnu) !+ nint(rand())*(1-2*nint(rand()))
-          siglow = refind + sigmin !- dsigind
-          sighigh = refind + sigmax
-
+          refind = nint(t*(trackrate - rotEarth)/dnu) !+ nint(rand())*(1-2*nint(rand()))
+          siglow = refind + floor(sigmin/dnu) !- dsigind
+          sighigh = refind + floor(sigmax/dnu)
+          sigind = 0
           print *,t,order, ell
-          write(112,*) t, order, siglow, sighigh, t*a1(ell)%ords(order)
+          write(112,*) t, order, siglow, sighigh, t*a1(ellp)%ords(order)
           flush(112)
 
-          do sigoff = siglow,sighigh
-            if (sigoff == refind) cycle
+          do sigoff = siglow,sighigh,dsig
+            !if (sigoff == refind) cycle
 
+            sigind = sigind + 1
             noisehalf = 0.d0
             den(smin:smax) = 0.d0
-            sigind = sigoff - refind
-            sig = t * trackrate + sigind*dnu 
-
+            !sigind = sigoff - refind
+            sig = sigoff * dnu!t * (trackrate - rotEarth) + sigind*dnu 
             do m = mmin, mmax
 
               mp = m + t
@@ -580,9 +716,9 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
 
               lolim_m = nulmn - gamnl
               hilim_m = nulmn + gamnl
-              lolim_mp = nulmnt - gamnl - sig
-              hilim_mp = nulmnt + gamnl - sig
-              
+              lolim_mp = nulmnt - gamnlp - sig
+              hilim_mp = nulmnt + gamnlp - sig
+
               minoff = floor(min(lolim_m,lolim_mp)/dnu)-1
               maxoff = floor(max(hilim_m,hilim_mp)/dnu)+1 ! mistake, was lolim_m
          
@@ -600,23 +736,24 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
                 intarr(k) = j
                endif
               enddo
-
-              prefac(intarr(1:k),m) =-2*nu(intarr(1:k),1)*2*pi*1e-6* nj(0)*leakage(ell)%ems(m)*&
-              leakage(ellp)%ems(mp)* (limitpow(intarr(1:k)+sigoff,mp,0)*abspow(intarr(1:k),m,0)&
-              + conjg(limitpow(intarr(1:k),m,0))*abspow(intarr(1:k)+sigoff,mp,0)) 
+              prefac(intarr(1:k),m) =-2*arr(intarr(1:k))*2*pi*1e-6* leakage(ell)%ems(m)*&
+              leakage(ellp)%ems(mp)* (nj1(0)*limitpow2(intarr(1:k)+sigoff,mp,0)*abspow1(intarr(1:k),m,0)&
+              + nj2(0)*conjg(limitpow1(intarr(1:k),m,0))*abspow2(intarr(1:k)+sigoff,mp,0)) 
              
               conr = sum(abs(prefac(intarr(1:k),m))**2)
 
-              conp =sum(prefac(intarr(1:k),m)*conjg(shtdata(intarr(1:k),m))*shtdata(intarr(1:k)+sigoff,mp)) 
+              conp =sum(prefac(intarr(1:k),m)*conjg(shtdata(intarr(1:k),m))*shtdatap(intarr(1:k)+sigoff,mp)) 
               do s = slow,smax
                b_coefs(s,order, sigind)%tee(t) = b_coefs(s,order,sigind)%tee(t) +  conp*wig(s)%sub3j(t,m)
                den(s) =  conr*wig(s)%sub3j(t,m)**2  + den(s) !
+         !      print *,s,t,conr,wig(s)%sub3j(t,m)
               enddo ! s loop
              enddo ! m loop! omega loop (m')
 
+         
        !NOISE CALCULATION
            if (compute_noise) then
-!             noisevar1 = 0.d0
+             if (compute_varnoise) noisevar1 = 0.d0
              do m= mmin,mmax
                minoff = minoffarr(m)
 
@@ -639,52 +776,60 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
                 if (compute_ab_initio) then
                  noisehalf = 0.d0
                  noiseother = 0.d0
-!                 temphalf = 0.d0
- !                tempother = 0.d0
-  
+                 if (compute_varnoise) then
+                  temphalf = 0.d0
+                  tempother = 0.d0
+                 endif
                 
-                 do dl = -dell,dell
+                 do dl = -dell, dell
                   eldp = ell + dl
-                  leaks = rleaks(-delm:delm,:,dl) + mix(dl) * horleaks(-delm:delm,:,dl)
+                  leaks1 = rleaks1(-delm:delm,:,dl) + mix1(dl) * horleaks1(-delm:delm,:,dl)
                   emdpmin = max(-eldp,m-delm,emp-delm)
                   emdpmax = min(eldp,emp+delm,m+delm)
 
                   do emdp =emdpmin,emdpmax
-                   cons = leaks(emdp-m,m) * leaks(emdp-emp,emp)*nj(dl)
-                   noisehalf(1:k) = noisehalf(1:k) + cons * abspow(intarr(1:k),emdp,dl)
-!                   do reals = 1,nreals
- !                   do indst=1,k
-  !                   temphalf(indst,reals) = cons * abspow(intarr(indst),emdp,dl) * &
-   !                         (cmplx(rnor(),-rnor()))*cmplx(rnor(),rnor())*0.5 +&
-    !                                      temphalf(indst,reals)
-     !               enddo
-      !             enddo
+                   cons = leaks1(emdp-m,m) * leaks1(emdp-emp,emp)*nj1(dl)
+                   noisehalf(1:k) = noisehalf(1:k) + cons * abspow1(intarr(1:k),emdp,dl)
+                   if (compute_varnoise) then
+                    do reals = 1,nreals
+                     do indst=1,k
+                      temphalf(indst,reals) = cons * abspow1(intarr(indst),emdp,dl) * &
+                            (cmplx(rnor(),-rnor()))*cmplx(rnor(),rnor())*0.5 +&
+                                          temphalf(indst,reals)
+                     enddo
+                    enddo
+                   endif
                   enddo
 
+                  eldp = ellp + dl
                   emdpmin = max(m+t-delm,emp+t-delm,-eldp)
                   emdpmax = min(emp+t+delm,m+t+delm,eldp)
-             
+                  leaks2 = rleaks2(-delm:delm,:,dl) + mix2(dl) * horleaks2(-delm:delm,:,dl)
                   do emdp =emdpmin,emdpmax
-                   consp = leaks(emdp-m-t,m+t) * leaks(emdp-emp-t,emp+t)*nj(dl)
-                   noiseother(1:k) = noiseother(1:k) + consp * abspow(intarr(1:k)+sigoff,emdp,dl)
-!                   do reals = 1,nreals
- !                   do indst=1,k
-  !                   tempother(indst,reals) = consp * abspow(intarr(indst)+sigoff,emdp,dl) * &
-   !                         (cmplx(rnor(),-rnor()))*cmplx(rnor(),rnor())*0.5 +&
-    !                                      tempother(indst,reals)
-     ! 
-      !              enddo
-       !            enddo
+                   consp = leaks2(emdp-m-t,m+t) * leaks2(emdp-emp-t,emp+t)*nj2(dl)
+                   noiseother(1:k) = noiseother(1:k) + consp * abspow2(intarr(1:k)+sigoff,emdp,dl)
+                   if (compute_varnoise) then
+                    do reals = 1,nreals
+                     do indst=1,k
+                      tempother(indst,reals) = consp * abspow2(intarr(indst)+sigoff,emdp,dl) * &
+                            (cmplx(rnor(),-rnor()))*cmplx(rnor(),rnor())*0.5 +&
+                                          tempother(indst,reals)
+       
+                     enddo
+                    enddo
+                   endif
 
                   enddo
 
                 enddo
                 conr = (1.d0 + dm/(dm+1e-10))*sum(real(conjg(prefac(intarr(1:k),m))*prefac(intarr(1:k),emp))*&
                                noisehalf(1:k)*noiseother(1:k))
-!                do reals =1,nreals
-!                  noisevar2(reals) = (1.d0 + dm/(dm+1e-10))*sum(real(conjg(prefac(intarr(1:k),m))*prefac(intarr(1:k),emp)*&
-!                      conjg(temphalf(1:k,reals))*tempother(1:k,reals))) - conr
-!                enddo
+                if (compute_varnoise) then
+                 do reals =1,nreals
+                  noisevar2(reals) = (1.d0 + dm/(dm+1e-10))*sum(real(conjg(prefac(intarr(1:k),m))*prefac(intarr(1:k),emp)*&
+                      conjg(temphalf(1:k,reals))*tempother(1:k,reals))) - conr
+                 enddo
+                endif
 
                else
                 conr =(1.d0 + dm/(dm+1e-10))*sum(real(conjg(prefac(intarr(1:k),m))*prefac(intarr(1:k),emp)))
@@ -693,7 +838,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
                do s = slow, smax
                 cons = wig(s)%sub3j(t,m) * wig(s)%sub3j(t,emp)
                 noise(s,order,sigind)%tee(t) = noise(s,order,sigind)%tee(t) + conr * cons 
-!                noisevar1(:,s) = noisevar1(:,s) + noisevar2 * cons
+                if (compute_varnoise) noisevar1(:,s) = noisevar1(:,s) + noisevar2 * cons
                enddo
            
               enddo
@@ -701,30 +846,57 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
              enddo
              
            endif
-           den = 1.d0/den
+           den = 1.d0/(den + 1e-10)
+           !if (any(isnan(den))) den=0.d0
            do s = slow, smax
             b_coefs(s,order,sigind)%tee(t) = b_coefs(s,order,sigind)%tee(t)*den(s)
             if (compute_noise) then
              noise(s,order,sigind)%tee(t) = noise(s,order,sigind)%tee(t) * den(s)**2
-!             noisevar(s,order,sigind)%tee(t) = sum(noisevar1(:,s)**2,1)/dble(nreals) * den(s)**4 
+             if (compute_varnoise) noisevar(s,order,sigind)%tee(t) = sum(noisevar1(:,s)**2,1)/dble(nreals) * den(s)**4 
             endif
            enddo
 
        enddo ! sigma loop
+       
+       !do sigind=sigmin,sigmax
+        !do s=slow,smax
+        !enddo
+       !enddo
       enddo ! t loop
 
      endif ! to make sure orders represented and the frequency is non-zero
 
-     deallocate(prefac, minoffarr, maxoffarr, limitpow, abspow,leaks,tempm,mask) 
+     deallocate(prefac, minoffarr, maxoffarr, limitpow1, abspow1,leaks1,leaks2,&
+         abspow2,limitpow2,tempm,mask) 
    enddo ! order loop
 
   call cpu_time(tfin)
   print *,'Computational time:',tfin-tstart
-!  call system('rm /scratch/shravan/'//instrument//'/processed/'//ynum//'_'//lch)
-!  call exit()
- call writefits_bcoef_same('/scratch/shravan/'//instrument//'/tracking'//trackch//'/', &
-      ell, ellp, yearnum, nyears, compute_noise)
+!  if (compute_norms) then 
+ ! if (instrument=='HMI') 
+  !if (instrument=='MDI') call system('rm /tmp29/shravan/'//instrument//'/processed/'//ynum//'_'//lch)
+  call system('rm '//adjustl(trim(workdir))//'/lengs_'//lch//'_'//lch_p//'_'//ynum)
+  call system('rm '//adjustl(trim(prefix))//'/processed/'//lch//'_'//lch_p//'_'//ynum)
+  if (compute_norms) then
+   call exit()
+  endif
 
+ !if (instrument =='HMI') 
+  call writefits_bcoef_same(adjustl(trim(prefix))//'/tracking'//trackch//'/', &
+      ell, ellp, yearnum, nyears, nsig, compute_noise, compute_varnoise)
+
+  open(331,file=adjustl(trim(prefix))//'/tracking'//trackch//&
+       '/frequency_metadata_l_'//lch//'_lp_'//lch_p//'_year_'//ynum//'_'//ynum2,status='unknown',&
+       action='write')
+  write(331,*) dnu
+  write(331,*) floor(sigmin/dnu)
+  write(331,*) floor(sigmax/dnu)+dsig
+  write(331,*) dsig
+  close(331)
+ !if (instrument =='MDI') call writefits_bcoef_same('/tmp29/shravan/'//instrument//'/tracking'//trackch//'/', &
+ !     ell, ellp, yearnum, nyears, compute_noise, compute_varnoise)
+
+ nullify(arr)
 end subroutine analyzethis
 
 !================================================================================
@@ -756,16 +928,17 @@ implicit none
 
 integer *8 fwdplan
 integer yearnum, startpoint, nt72, ell, st, twont72
-integer indst, indend, nyears, nmax, i, deltast
+integer indst, indend, nyears, nmax, i, deltast, stnew
 
 character*4 daynum,el
-character*120 filenam
+character*3 ellc
+character*120 filenam, dirloc
 
 real*8 norm
 real*8, allocatable, dimension(:,:) :: dat
 
 logical lexist
-complex*16, allocatable, dimension(:,:) :: inp,shtdat
+complex*16, allocatable, dimension(:,:) :: inp, shtdat
 
 ! 2 years end at 1864 (including it)
 !Right after 2 years, i.e. 1936, there is a gap of 180 days and the next dataset
@@ -799,15 +972,16 @@ if (instrument == 'MDI') then
 
   st = (yearnum-1)*360 + startpoint + deltast
 
-  if (ell .ge. 100) write(el,'(I3.3)') ell
-  if (ell .lt. 100) write(el,'(I2.2)') ell
+ ! if (ell .ge. 100) 
+  write(ellc,'(I3.3)') ell
+  !if (ell .lt. 100) write(el,'(I2.2)') ell
 
   nmax = nyears*5-1
 
   do i=0,nmax
    write(daynum,'(I4.4)') st
-   call readfits('/scratch/data/MDI/mdi.vw_V_sht_gf_72d.'&
-       //daynum//'.'//trim(adjustl(el))//'.fits', dat, twont72,ell+1,1)
+   call readfits(trim(adjustl(mdidir))//'/MDI_'//ellc//'_' &
+       //daynum//'.fits', dat, twont72,ell+1,1)
    indst = i*nt72+1
    indend = (i+1)*nt72
    inp(indst:indend,:) = (dat(1:twont72:2,:) - (0.d0, 1.d0) * dat(2:twont72:2,:))*norm
@@ -843,6 +1017,7 @@ if (instrument == 'MDI') then
   call dfftw_destroy_plan(fwdplan)
 
 elseif (instrument == 'HMI') then
+
   startpoint = 6328
   dt = 45.d0
 !  domega = 2.d0*pi/(360.d0*24.d0*60.d0*60.d0)
@@ -856,23 +1031,37 @@ elseif (instrument == 'HMI') then
   call dfftw_plan_guru_dft(fwdplan,1,nt,1,1,1,ell+1,&
      & nt,nt,inp(1,1),shtdat(1,1),FFTW_BACKWARD,FFTW_ESTIMATE)
 
+!  call dfftw_plan_many_dft(fwdplan,1,nt,ell+1,&
+!     & inp(1,1),nt,1,nt,shtdat(1,1),nt,1,nt,FFTW_BACKWARD,FFTW_ESTIMATE)
+
   st = (yearnum-1)*360 + startpoint 
 
   if (ell .ge. 100) write(el,'(I3.3)') ell
   if (ell .lt. 100) write(el,'(I2.2)') ell
 
+  write(ellc,'(I3.3)') ell
+
   nmax = nyears*5-1
+ ! open(325,file='/scr28/shravan/locations/locs_ell_'//ellc,action='read',&
+ !      position='rewind',status='old',form='FORMATTED')
+ ! stnew = (yearnum-1)*5
+ ! do i=1,stnew
+ !  read(325,'(A)') 
+ ! enddo
 
   do i=0,nmax
+ !  read(325,'(A)') dirloc
    write(daynum,'(I4.4)') st
-   call readfits('/scratch/data/HMI/hmi.v_sht_gf_72d.'&
-       //daynum//'.'//trim(adjustl(el))//'.fits', dat, twont72,ell+1,1)
+   call readfits(trim(adjustl(hmidir))//'/HMI_'//ellc//'_'//daynum//'.fits',dat,twont72,ell+1,1)
+ !  call readfits('/scratch/data/HMI/hmi.v_sht_gf_72d.'&
+  !     //daynum//'.'//trim(adjustl(el))//'.fits', dat, twont72,ell+1,1)
    indst = i*nt72+1
    indend = (i+1)*nt72
    inp(indst:indend,:) = (dat(1:twont72:2,:) - (0.d0, 1.d0) * dat(2:twont72:2,:))*norm
    st = st + 72
   enddo
 
+  !close(325)
   call dfftw_execute_dft(fwdplan,inp,shtdat)
 
   deallocate(dat,inp)
@@ -885,13 +1074,14 @@ END FUNCTION SHTDAT
 
 !================================================================================
 
-        SUBROUTINE writefits_bcoef_same (directory, l, lp, yearnum, nyears,compute_noise)
+        SUBROUTINE writefits_bcoef_same (directory, l, lp, yearnum, nyears, nsig, compute_noise, &
+                                         compute_varnoise)
 
         implicit none 
 
         integer blocksize,bitpix,naxes(7),unit1, s, i0, isg
         integer i1, i2, i3, i4, l, lp, yearnum, ind, ns, sig
-        integer status1,group,fpixel,flag, nelements, nyears
+        integer status1,group,fpixel,flag, nelements, nyears, nsig
 
 	character*80 filename
         character*(*) directory
@@ -899,7 +1089,7 @@ END FUNCTION SHTDAT
         character*2 ynum2, ynum
 !        character*1 omin, omax
 
-	logical simple,extend, exists, compute_noise
+	logical simple,extend, exists, compute_noise, compute_varnoise
 
         real*8, allocatable, dimension(:,:,:) :: tempreal
         real*8, allocatable, dimension(:,:,:,:) :: temp
@@ -916,8 +1106,15 @@ END FUNCTION SHTDAT
 
          ! WRITING OUT SIGNAL
 
-          filename = directory//'bcoef_l_'//lch//'_lp_'//lch_p//&
-          '_year_'//ynum//'_'//ynum2//'.fits'
+          if (flow_analysis) then
+             filename = directory//'bcoef_l_'//lch//'_lp_'//lch_p//&
+             '_year_'//ynum//'_'//ynum2//'.fits'
+          else
+              filename = directory//'bcoef_sound_l_'//lch//'_lp_'//lch_p//&
+             '_year_'//ynum//'_'//ynum2//'.fits'
+          endif
+       
+          
          
           inquire(file=trim(adjustl(filename)), exist=exists)
           if (exists) call system('rm '//filename)
@@ -934,15 +1131,15 @@ END FUNCTION SHTDAT
 	  naxes(1)=ns
 	  naxes(2)=ordmax - ordmin + 1
 !	  naxes(3)=ordmax - ordmin + 1
-	  naxes(3)=sigmax-sigmin+1
+	  naxes(3)=nsig
 	  naxes(4)=2
 
-          allocate(temp(1:ns,ordmin:ordmax,sigmin:sigmax, 2))
-          allocate(tempreal(1:ns,ordmin:ordmax,sigmin:sigmax))
+          allocate(temp(1:ns,ordmin:ordmax,1:nsig, 2))
+          allocate(tempreal(1:ns,ordmin:ordmax,1:nsig))
 
           temp = 0.d0
           ind = 0
-          do i4=sigmin,sigmax
+          do i4=1,nsig
             do i2 = ordmin, ordmax
              do i1 = smin, smax
               do i0 = -i1, i1
@@ -974,9 +1171,14 @@ END FUNCTION SHTDAT
 
           if (compute_noise) then
 
-          filename = directory//'noise_l_'//lch//'_lp_'//lch_p//&
-          '_year_'//ynum//'_'//ynum2//'.fits'
-         
+           if (flow_analysis) then
+            filename = directory//'noise_l_'//lch//'_lp_'//lch_p//&
+            '_year_'//ynum//'_'//ynum2//'.fits'
+           else
+             filename = directory//'noise_sound_l_'//lch//'_lp_'//lch_p//&
+            '_year_'//ynum//'_'//ynum2//'.fits'
+           endif
+        
           inquire(file=trim(adjustl(filename)), exist=exists)
           if (exists) call system('rm '//filename)
           print *,'Writing file '//filename
@@ -992,11 +1194,11 @@ END FUNCTION SHTDAT
 	  naxes(1)=ns
 	  naxes(2)=ordmax - ordmin + 1
 !	  naxes(3)=ordmax - ordmin + 1
-	  naxes(3)=sigmax-sigmin+1
+	  naxes(3)=nsig
 
           tempreal = 0.d0
           ind = 0
-          do i4=sigmin, sigmax
+          do i4=1,nsig
             do i2 = ordmin, ordmax
              do i1 = smin, smax
               do i0 = -i1, i1
@@ -1024,10 +1226,16 @@ END FUNCTION SHTDAT
 	  call ftfiou(unit1, status1)
 
 
-          if (1 ==2) then 
-           filename = directory//'noisevar_l_'//lch//'_lp_'//lch_p//&
-           '_year_'//ynum//'_'//ynum2//'.fits'
-         
+          if (compute_varnoise) then 
+
+           if (flow_analysis) then
+            filename = directory//'noisevar_l_'//lch//'_lp_'//lch_p//&
+            '_year_'//ynum//'_'//ynum2//'.fits'
+           else
+             filename = directory//'noisevar_sound_l_'//lch//'_lp_'//lch_p//&
+            '_year_'//ynum//'_'//ynum2//'.fits'
+           endif
+        
            inquire(file=trim(adjustl(filename)), exist=exists)
            if (exists) call system('rm '//filename)
            print *,'Writing file '//filename
@@ -1043,11 +1251,11 @@ END FUNCTION SHTDAT
 	   naxes(1)=ns
 	   naxes(2)=ordmax - ordmin + 1
 !	  naxes(3)=ordmax - ordmin + 1
-	   naxes(3)=sigmax!-sigmin+1
+	   naxes(3)=nsig !sigmax!-sigmin+1
 
            tempreal = 0.d0
            ind = 0
-           do i4=1, sigmax
+           do i4=1, nsig
              do i2 = ordmin, ordmax
               do i1 = smin, smax
                do i0 = -i1, i1
@@ -1077,7 +1285,8 @@ END FUNCTION SHTDAT
 
          
           do i0 = ordmin, ordmax
-            write(102,*) int(en(l)%ords(i0)), freqnu(l)%ords(i0), a1(l)%ords(i0)
+            write(102,*) int(en(l)%ords(i0)), freqnu(l)%ords(i0), a1(l)%ords(i0), &
+                       int(en(lp)%ords(i0)), freqnu(lp)%ords(i0), a1(lp)%ords(i0)
           enddo
 !           write(102,*) 'Ell: '
 !           write(102,*) l
@@ -1099,6 +1308,7 @@ END FUNCTION SHTDAT
            
 
 	 end SUBROUTINE writefits_bcoef_same
+
 !================================================================================
 
 
@@ -1115,23 +1325,22 @@ SUBROUTINE compute_wig3j_data_analysis(ell, ellp)
    enddo
 
    do em = -ell, ell
-    
     tmin = max(-smax,-ellp-em) !-em - t <= l'
     tmax = min(smax,-em + ellp) ! -em - t >= -l'
     do t = tmin, tmax
 
      call drc3jj(dble(ell),dble(ellp),dble(em),dble(-em-t),lmi,lma,temv,lmax+lmax+1,IER) 
 
-      slow = max(int(lmi),smin)
-      shigh = min(int(lma),smax)
-      con = 1.d0 - 2.d0*modulo(em+t,2)
-      do es = slow, shigh
-       wig(es)%sub3j(t,em) = temv(es-int(lmi) + 1) * (2.d0*es + 1.d0)**0.5 * con
-      enddo
-      temv = 0.d0
-       
+     slow = max(int(lmi),smin,abs(t))
+     shigh = min(int(lma),smax)
+     con = 1.d0 - 2.d0*modulo(em+t,2)
+     do es = slow, shigh
+      wig(es)%sub3j(t,em) = temv(es-int(lmi) + 1) * (2.d0*es + 1.d0)**0.5 * con
      enddo
+     temv = 0.d0
+       
     enddo
+   enddo
 
 
 
@@ -2140,9 +2349,9 @@ FUNCTION D1MACH (I)
 end function D1MACH
 
 !================================================================================================
-subroutine read_leakage(dl,dm, ell)
+subroutine read_leakage(dl,dm, ell, ellp)
   implicit none
-  integer dm, dl, dl_mat,dm_mat, ind, ind0, i, j, l, lp, m, mp, ell
+  integer dm, dl, dl_mat,dm_mat, ind, ind0, i, j, l, lp, m, mp, ell, ii, ellp
   real*8 L_rr,L_ii
   ! integer dm,dl
   !integer, allocatable, dimension(:) :: lp_mat,mp_mat
@@ -2198,10 +2407,17 @@ subroutine read_leakage(dl,dm, ell)
       2*dm_mat+1,2*dl_mat+1,ind)
 
    
-   allocate(rleaks(-dm:dm,-ell:ell,-dl:dl), horleaks(-dm:dm,-ell:ell,-dl:dl))
-   rleaks = 0.d0
-   horleaks = 0.d0
-   do lp = ell,ell!lmin, lmax
+   allocate(rleaks1(-dm:dm,-ell:ell,-dl:dl), horleaks1(-dm:dm,-ell:ell,-dl:dl),&
+      rleaks2(-dm:dm,-ellp:ellp,-dl:dl), horleaks2(-dm:dm,-ellp:ellp,-dl:dl))
+   rleaks1 = 0.d0
+   horleaks1 = 0.d0
+
+   rleaks2 = 0.d0
+   horleaks2 = 0.d0
+
+   do ii = 1,2!lmin, lmax
+    if(ii==1) lp=ell
+    if(ii==2) lp=ellp
     ind0 = lp*(lp+1)/2
 !    do j = -dl, dl
 !     do i = -dm, dm
@@ -2224,14 +2440,24 @@ subroutine read_leakage(dl,dm, ell)
 
        !if(abs(L_rr*L_ii) > 1e-2) cycle
 
-       rleaks(i,mp,j) = L_rr + L_ii  
-       rleaks(i,-mp,j) = L_rr + sign(1,mp)* L_ii
+       if (ii==1) then
+        rleaks1(i,mp,j) = L_rr + L_ii  
+        rleaks1(i,-mp,j) = L_rr + sign(1,mp)* L_ii
+       else
+        rleaks2(i,mp,j) = L_rr + L_ii  
+        rleaks2(i,-mp,j) = L_rr + sign(1,mp)* L_ii
+       endif
 
        L_ii = 0.5*sign(1,m)*hi_mat(abs(m)-abs(mp)+dm_mat+1,l-lp+dl_mat+1,ind)
        L_rr = 0.5*hr_mat(abs(m)-abs(mp)+dm_mat+1,l-lp+dl_mat+1,ind)
 
-       horleaks(i,mp,j) = L_rr + L_ii  
-       horleaks(i,-mp,j) = L_rr + sign(1,mp)* L_ii
+       if (ii==1) then
+        horleaks1(i,mp,j) = L_rr + L_ii  
+        horleaks1(i,-mp,j) = L_rr + sign(1,mp)* L_ii
+       else
+        horleaks2(i,mp,j) = L_rr + L_ii  
+        horleaks2(i,-mp,j) = L_rr + sign(1,mp)* L_ii
+       endif
 
 !       if(abs(L_rr*L_ii) > 1e-2)   print *,rleaks(i,mp,j),horleaks(i,mp,j),m,mp,ell,lp,dm
        !   rleaks(i,mp,j) = 0.d0 !
@@ -2333,4 +2559,21 @@ end subroutine read_leakage
       !if (status .gt. 0)call printerror(status)
       end subroutine readheader
 !C *************************************************************************
+
+! ---------------------------------
+FUNCTION Lower(s1)  RESULT (s2)
+CHARACTER(*)       :: s1
+CHARACTER(LEN(s1)) :: s2
+CHARACTER          :: ch
+INTEGER,PARAMETER  :: DUC = ICHAR('A') - ICHAR('a')
+INTEGER            :: i
+
+DO i = 1,LEN(s1)
+   ch = s1(i:i)
+   IF (ch >= 'A'.AND.ch <= 'Z') ch = CHAR(ICHAR(ch)-DUC)
+   s2(i:i) = ch
+END DO
+END FUNCTION Lower
+
+! ---------------------------------
 END MODULE DATA_ANALYSIS
