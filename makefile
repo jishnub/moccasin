@@ -27,7 +27,7 @@ FC77=   gfortran
 ##FC77=   gfortran
 current_dir = $(shell pwd)
 FFLAGS= -O3 -DDOUBLE_PRECISION## -fbounds-check -p -g ##-mcmodel=large ##!-p -g ##-check all ##-fpe0 -traceback -debug #-check bounds
-LIBS1=	-L/home/shravan/fftw-3.3.4/lib -lfftw3 -L./ -lcfitsio -L/home/apps/lapack-3.5.0 -llapack -lrefblas -lcurl -L$(current_dir)/optlib -lf90getopt
+LIBS1=	-lfftw3 -L./ -lcfitsio -llapack -lrefblas -lcurl -L$(current_dir)/optlib -lf90getopt
 LIBS2=	-L$(current_dir)/optlib -lf90getopt
 
 COMMAND1=	analyze
@@ -35,7 +35,7 @@ COMMAND2=	process
 COMMAND3=	setup
 COMMAND4=	kernels
 
-INCLUDE= $(current_dir)/opt_lib
+INCLUDE= $(current_dir)/optlib
 
 $(COMMAND1): $(OBJS1) 
 	$(FC) -I$(INCLUDE) $(FFLAGS) -o $(COMMAND1) $(OBJS1) $(LIBS1) 
@@ -52,6 +52,13 @@ $(COMMAND4): $(OBJS4)
 
 %.o : %.f
 	$(FC77) -I$(INCLUDE) $(FFLAGS) -c $< 
+
+f90getopt.mod : f90getopt.F90
+	gfortran -c f90getopt.F90
+	ar cr libf90getopt.a f90getopt.o
+	ranlib libf90getopt.a
+	mkdir -p optlib
+	mv libf90getopt.a optlib/libf90getopt.a
 
 %.o : %.f90
 	$(FC) -I$(INCLUDE) $(FFLAGS) -c $< 
