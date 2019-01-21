@@ -166,7 +166,7 @@ subroutine construct_frequencies(inpfile,ll,llp,ynum)
     stop
   endif
 
-  if (ll > lmax .or. llp > lmax) then
+  if (ll > lmax .or. llp < lmax) then
     print *,'Harmonic degree greater than lmax'
     stop
   endif
@@ -382,6 +382,8 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
 
  nchunk = nint(nyears*5.0)
 
+
+
  if (instrument =='HMI') then
    prefix = outhmidir
    freqdir = freqhmidir
@@ -402,10 +404,6 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
  write(ynum,'(I2.2)') nint((yearnum-1)*5.0)+1
  write(ynum2,'(I2.2)') nchunk
 
- call system('mkdir -p '//adjustl(trim(prefix)))
- call system('mkdir -p '//adjustl(trim(prefix))//'/tracking'//trackch)
- call system('mkdir -p '//adjustl(trim(prefix))//'/processed')
-
  open(331,file=adjustl(trim(prefix))//'/tracking'//trackch//&
        '/frequency_metadata_l_'//lch//'_lp_'//lch_p//'_year_'//ynum//'_'//ynum2,status='unknown',&
        action='write')
@@ -416,7 +414,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
   lowinst = Lower(instrument)
   call construct_frequencies (adjustl(trim(freqdir))//'/'//lowinst//'.'//daynum//'.36', ell, &
                                ellp,yearnum)
-  ! prefix = '/scratch/jb6888/'//instrument
+  ! prefix = '/scratch/shravan/'//instrument
    nordcorr = 0
    ordcorr = -1
   if (.not. compute_norms) then
@@ -448,8 +446,10 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
    stop
   endif 
 
-
   if (.not. compute_norms) then
+   call system('mkdir -p '//adjustl(trim(prefix)))
+   call system('mkdir -p '//adjustl(trim(prefix))//'/tracking'//trackch)
+   call system('mkdir -p '//adjustl(trim(prefix))//'/processed')
 
    open(102,file=adjustl(trim(prefix))//'/tracking'//trackch//'/bcoef_metadata_l_'//lch//'_lp_'//lch_p//&
     '_year_'//ynum//'_'//ynum2,action='write',status='unknown', position='rewind')
@@ -546,7 +546,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
       inquire(file=adjustl(trim(prefix))//'/norms/'//&
              lchtemp//'_year_'//ynum//'_'//ynum2,exist=lexist)
 
-     !if (instrument =='MDI') inquire(file='/tmp29/jb6888/'//instrument//'/norms/'//instrument//&
+     !if (instrument =='MDI') inquire(file='/tmp29/shravan/'//instrument//'/norms/'//instrument//&
      !        '_'//lchtemp//'_year_'//ynum,exist=lexist)
       if (dl==0 .and. (.not.lexist)) then
        print *,'File doesnt exist:',adjustl(trim(prefix))//'/norms/'//&
@@ -560,7 +560,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
        open(1555,file=adjustl(trim(prefix))//'/norms/'//&
              lchtemp//'_year_'//ynum//'_'//ynum2,status='old',action='read')
 
-!      if (instrument=='MDI') open(1555,file='/tmp29/jb6888/'//instrument//'/norms/'//instrument//&
+!      if (instrument=='MDI') open(1555,file='/tmp29/shravan/'//instrument//'/norms/'//instrument//&
 !             '_'//lchtemp//'_year_'//ynum,status='old',action='read')
 
        do  
@@ -600,7 +600,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
    ! if (instrument =='HMI') 
     open(144,file=adjustl(trim(prefix))//'/norms/'//lch//'_year_'//ynum//'_'//ynum2,status='unknown') !instrument//'_'//
 
-   ! if (instrument =='MDI') open(144,file='/tmp29/jb6888/'//instrument//& ! comment out in production mode
+   ! if (instrument =='MDI') open(144,file='/tmp29/shravan/'//instrument//& ! comment out in production mode
    !  '/norms/'//instrument//'_'//lch//'_year_'//ynum,status='unknown')
 
    endif
@@ -947,7 +947,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
   print *,'Computational time:',tfin-tstart
 !  if (compute_norms) then 
  ! if (instrument=='HMI') 
-  !if (instrument=='MDI') call system('rm /tmp29/jb6888/'//instrument//'/processed/'//ynum//'_'//lch)
+  !if (instrument=='MDI') call system('rm /tmp29/shravan/'//instrument//'/processed/'//ynum//'_'//lch)
   call system('rm '//adjustl(trim(workdir))//'/lengs_'//lch//'_'//lch_p//'_'//ynum)
   call system('rm -f '//adjustl(trim(prefix))//'/processed/'//lch//'_'//lch_p//'_'//ynum)
   if (compute_norms) then
@@ -959,7 +959,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
       ell, ellp, yearnum, nchunk, nsig, nordcorr, compute_noise, compute_varnoise)
 
   close(331)
- !if (instrument =='MDI') call writefits_bcoef_same('/tmp29/jb6888/'//instrument//'/tracking'//trackch//'/', &
+ !if (instrument =='MDI') call writefits_bcoef_same('/tmp29/shravan/'//instrument//'/tracking'//trackch//'/', &
  !     ell, ellp, yearnum, nyears, compute_noise, compute_varnoise)
 
  nullify(arr)
@@ -1046,7 +1046,7 @@ if (instrument == 'MDI') then
   st = startpoint !+ deltast
   do i=0,nmax-1
    write(daynum,'(I4.4)') st
-   call readfits(trim(adjustl(mdidir))//'/'//ellc//'/MDI_'//ellc//'_' &
+   call readfits(trim(adjustl(mdidir))//'/MDI_'//ellc//'_' &
        //daynum//'.fits', dat, twont72,ell+1,1)
    indst = i*nt72+1
    indend = (i+1)*nt72
@@ -1096,6 +1096,7 @@ elseif (instrument == 'HMI') then
 
   call dfftw_plan_guru_dft(fwdplan,1,nt,1,1,1,ell+1,&
      & nt,nt,inp(1,1),shtdat(1,1),FFTW_BACKWARD,FFTW_ESTIMATE)
+
 !  call dfftw_plan_many_dft(fwdplan,1,nt,ell+1,&
 !     & inp(1,1),nt,1,nt,shtdat(1,1),nt,1,nt,FFTW_BACKWARD,FFTW_ESTIMATE)
 
@@ -1106,7 +1107,7 @@ elseif (instrument == 'HMI') then
   write(ellc,'(I3.3)') ell
 
 !  nmax = nyears*5-1
- ! open(325,file='/scr28/jb6888/locations/locs_ell_'//ellc,action='read',&
+ ! open(325,file='/scr28/shravan/locations/locs_ell_'//ellc,action='read',&
  !      position='rewind',status='old',form='FORMATTED')
  ! stnew = (yearnum-1)*5
  ! do i=1,stnew
@@ -1117,7 +1118,7 @@ elseif (instrument == 'HMI') then
   do i=0,nmax-1
  !  read(325,'(A)') dirloc
    write(daynum,'(I4.4)') st
-   call readfits(trim(adjustl(hmidir))//'/'//ellc//'/HMI_'//ellc//'_'//daynum//'.fits',dat,twont72,ell+1,1)
+   call readfits(trim(adjustl(hmidir))//'/HMI_'//ellc//'_'//daynum//'.fits',dat,twont72,ell+1,1)
  !  call readfits('/scratch/data/HMI/hmi.v_sht_gf_72d.'&
   !     //daynum//'.'//trim(adjustl(el))//'.fits', dat, twont72,ell+1,1)
    indst = i*nt72+1
@@ -2463,14 +2464,14 @@ subroutine read_leakage(dl,dm, ell, ellp)
    allocate(cr_mat(2*dm_mat+1,2*dl_mat+1,ind),ci_mat(2*dm_mat+1,2*dl_mat+1,ind), &
          hr_mat(2*dm_mat+1,2*dl_mat+1,ind),hi_mat(2*dm_mat+1,2*dl_mat+1,ind))
 
-   call readfits('/scratch/jb6888/QDP/leakvw0/default/vradsum/leakrlist.vradsum.fits',cr_mat,&
+   call readfits('/home/shravan/QDP/leakvw0/default/vradsum/leakrlist.vradsum.fits',cr_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
-   call readfits('/scratch/jb6888/QDP/leakvw0/default/vradsum/leakilist.vradsum.fits',ci_mat,&
+   call readfits('/home/shravan/QDP/leakvw0/default/vradsum/leakilist.vradsum.fits',ci_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
 
-   call readfits('/scratch/jb6888/QDP/leakvw0/default/vhorsum/leakrlist.vhorsum.fits',hr_mat,&
+   call readfits('/home/shravan/QDP/leakvw0/default/vhorsum/leakrlist.vhorsum.fits',hr_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
-   call readfits('/scratch/jb6888/QDP/leakvw0/default/vhorsum/leakilist.vhorsum.fits',hi_mat,&
+   call readfits('/home/shravan/QDP/leakvw0/default/vhorsum/leakilist.vhorsum.fits',hi_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
 
    
