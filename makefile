@@ -26,7 +26,7 @@ FC77=   gfortran
 ##FC=	gfortran	
 ##FC77=   gfortran
 current_dir = $(shell pwd)
-FFLAGS= -O3 -DDOUBLE_PRECISION## -fbounds-check -p -g ##-mcmodel=large ##!-p -g ##-check all ##-fpe0 -traceback -debug #-check bounds
+FFLAGS= -O3 -DDOUBLE_PRECISION #-fbounds-check -p -g ##-mcmodel=large ##!-p -g ##-check all ##-fpe0 -traceback -debug #-check bounds
 LIBS1=	-lfftw3 -L./ -lcfitsio -L/home/apps/lapack-3.5 -llapack -lrefblas -lcurl -L$(current_dir)/optlib -lf90getopt
 LIBS2=	-L$(current_dir)/optlib -lf90getopt
 
@@ -35,7 +35,7 @@ COMMAND2=	process
 COMMAND3=	setup
 COMMAND4=	kernels
 
-INCLUDE= $(current_dir)/optlib
+INCLUDE= $(current_dir)/optlib -I/share/apps/NYUAD/fftw3/avx2/3.3.4/include
 
 $(COMMAND1): $(OBJS1) 
 	$(FC) -I$(INCLUDE) $(FFLAGS) -o $(COMMAND1) $(OBJS1) $(LIBS1) 
@@ -51,7 +51,7 @@ $(COMMAND4): $(OBJS4)
 
 
 %.o : %.f
-	$(FC77) -I$(INCLUDE) $(FFLAGS) -c $< 
+	$(FC77) $(INCLUDE) $(FFLAGS) -c $< 
 
 f90getopt.mod : f90getopt.F90
 	gfortran -c f90getopt.F90
