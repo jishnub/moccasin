@@ -18,7 +18,7 @@ PROGRAM SETUP
    opts(2) = option_s( "dell",  .true.,  'b' )
    opts(3) = option_s( "yearnum", .true.,  'c')
    opts(4) = option_s( "lmin", .true.,  'd')
-   opts(5) = option_s( "yearlength", .true.,  'e')
+   opts(5) = option_s( "nyears", .true.,  'e')
    opts(6) = option_s( "help", .false.,  'f')
    opts(7) = option_s( "instrument", .true.,  'g')
    opts(8) = option_s( "lmax", .true.,  'h')

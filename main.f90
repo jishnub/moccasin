@@ -5,13 +5,13 @@
   use kernels
 
   implicit none
-  integer s,t, cond, yearnum
+  integer s,t, cond, yearnum, dell
   logical asymptotics, leake, sound_leaks!, compute_wigner
   character*2 sc, tc
   character*3 trackch
   complex*16, allocatable, dimension(:,:,:) :: Lfun
 
-  type(option_s):: opts(7)
+  type(option_s):: opts(8)
    opts(1) = option_s( "asymptotics", .false., 'a' )
    opts(2) = option_s( "leakage", .false.,  'b')
    opts(3) = option_s( "s", .false.,  'c')
@@ -19,6 +19,7 @@
    opts(5) = option_s( "help", .false.,  'e')
    opts(6) = option_s( "sound_leaks", .false.,  'f')
    opts(7) = option_s( "instrument", .true.,  'g')
+   opts(8) = option_s( "dell", .true.,  'h')
   
    sound_leaks = .false.
    leake = .false.
@@ -52,7 +53,8 @@
             case( 'g' )
                 if (optarg == 'HMI' .or. optarg == 'MDI') instrument = optarg
                 if (optarg == 'mdi' .or. optarg == 'hmi') instrument = upper(optarg)
-
+            case( 'h' )
+                read(optarg,*) dell
         end select
     end do
 
@@ -66,7 +68,7 @@
 
 
    if (.not. leake) &
-    call compute_kernels_all(s, ntot, asymptotics)
+    call compute_kernels_all(s, dell, asymptotics)
     
 
  if (leake) then

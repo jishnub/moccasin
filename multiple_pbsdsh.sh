@@ -1,16 +1,16 @@
 #!/bin/bash
-#PBS -l nodes=10:ppn=8
-#PBS -o  output-multipbsdsh0
-#PBS -e  error-multipbsdsh0
+#PBS -l nodes=5:ppn=2
+#PBS -o  output-multipbsdsh1
+#PBS -e  error-multipbsdsh1
 #PBS -l walltime=48:00:00
 cd $PBS_O_WORKDIR
 
 instrument='HMI';
-llow=70;lhigh=149;nyears=4;yearlength=4;styear=1;dell=0;
+llow=1;lhigh=10;nyears=6;yearlength=6;styear=1;dell=1;
 ##lprimehigh=300;
 #nparams=`python -c "print (-1 + $llow - $lhigh)*(-2 + $llow + $lhigh - 2*$lhigh)/2*$nyears"`
-nparams=80 #`python -c "print ($lhigh-$llow+1)*($nyears//$yearlength)"`  
-nprocs=80 ## nprocs * ppn
+nparams=10 #`python -c "print ($lhigh-$llow+1)*($nyears//$yearlength)"`  
+nprocs=10 ## nprocs * ppn
 nloops=`python -c "import math;print int(math.ceil($nparams*1./$nprocs))"`
 jobscript="$PBS_O_WORKDIR/jobscript$styear.py"
 ##jobscript="/home/shravan/poloidal/jobscript$styear.py"
@@ -49,8 +49,10 @@ echo "    quit()" >> $jobscript
 ##echo "subprocess.call([\"${execpath}\ --ell",str(l),"--yearnum",str(year),"--ellp",str(lprime),"nyears",str($yearlength),"--instrument",$instrument])" >> $jobscript
 ##echo 'print (["/home/shravan/poloidal/analyze","--yearnum",str(year),"--ell",str(l),"--ellp", str(lprime),"--instrument",instrum,"--nyears",str(yearlen)])' >> $jobscript
 ##echo 'subprocess.call(["/home/shravan/poloidal/analyze","--yearnum",str(year),"--ell",str(l),"--ellp", str(lprime),"--instrument",instrum,"--nyears",str(yearlen)])' >> $jobscript
+
 echo "subprocess.call([\"${execpath}\",'--yearnum',str(year),'--ell',str(l),'--ellp', str(lprime),'--instrument',instrum,'--nyears',str(yearlen)])" >> $jobscript
-#echo "subprocess.call([\"${execpath}\",'--yearnum',str(year),'--ell',str(l),'--ellp', str(lprime),'--instrument',instrum,'--nyears',str(yearlen),'--compute_norms'])" >> $jobscript
+##echo "subprocess.call([\"${execpath}\",'--yearnum',str(year),'--ell',str(l),'--ellp', str(lprime),'--instrument',instrum,'--nyears',str(yearlen),'--compute_norms'])" >> $jobscript
+
 for iterno in `seq 1 $nloops`
 do
 	/usr/local/bin/pbsdsh /home/shravan/anaconda2/bin/python $jobscript $iterno

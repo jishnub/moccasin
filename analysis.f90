@@ -5,9 +5,9 @@
   use data_analysis
 
   implicit none
-  integer ell, ellp, nyears, yearnum,i
-  real*8 tfin, tstart
-  character*2 yearc
+  integer ell, ellp,i
+  real*8 tfin, tstart, nyears, yearnum
+  character*3 yearc
   character*3 ellc
   character*80 filename
 
@@ -54,8 +54,9 @@
                 print *,'Quitting.'
                 stop
             case( 'i' )
-                if (optarg == 'HMI' .or. optarg == 'MDI') instrument = optarg
-                if (optarg == 'mdi' .or. optarg == 'hmi') instrument = upper(optarg)
+                instrument = optarg
+                !if (optarg == 'HMI' .or. optarg == 'MDI') instrument = optarg
+                !if (optarg == 'mdi' .or. optarg == 'hmi') instrument = upper(optarg)
         end select
     end do
     if (nyears < 0 .or. ell < 0 .or. ellp < 0 .or. yearnum < 0 &
@@ -99,11 +100,11 @@
 ! write(112, *)
  close(112)
 
- write(ellc,'(I3.3)') ell
- write(yearc,'(I2.2)') yearnum
+! write(ellc,'(I3.3)') ell
+! write(yearc,'(I3.3)') nint(yearnum*10)
 
- call system('rm /scr28/shravan/'//instrument//'/processed/'//yearc//'_'//ellc)
- call system('rm /homea/shravan/QDP/lengs_'//ellc//'_'//ellc//'_'//yearc)
+! call system('rm /scr28/shravan/'//instrument//'/processed/'//yearc//'_'//ellc)
+ !call system('rm /homea/shravan/QDP/lengs_'//ellc//'_'//ellc//'_'//yearc)
 
  Contains
 

@@ -53,7 +53,7 @@ subroutine basic_setup!(compute_wigner)
 
    !sigmin = int(7.2*8.64*0.25)
    !sigmax = int(7.2*8.64*6)
-   ordmax = 24 
+   ordmax = 30
    ordmin = 0
    open(99, file='/home/shravan/QDP/egvt.sfopal5h5', form='unformatted', status='old')
    read(99)
@@ -101,7 +101,6 @@ subroutine basic_setup!(compute_wigner)
     endif
    enddo
   enddo
-
 
    allocate(r(nr), rho(nr), stretch(nr), unstretch(nr), &
    eigU(nr,ntot),deigU(nr,ntot),eigV(nr,ntot), omegaref(ntot), &
@@ -218,25 +217,23 @@ end subroutine basic_setup
 
 !------------------
 
-subroutine compute_kernels_all(s, leng, asymptotics)  !inversion !(polR, polH, polT, s, leng)
+subroutine compute_kernels_all(s, dell, asymptotics)  !inversion !(polR, polH, polT, s, leng)
 
 implicit none
 integer*8 planfwd, planinv
-integer s, ind, indp, leng, ord, k, ell, ellp, ordp,jj
+integer s, ind, indp, leng, ord, k, ell, ellp, ordp,jj, dell,storderp
 !parameter(leng = (lmax-lmin+1)**2*(ordmax-ordmin+1)**2)
-complex*16, dimension(1:nr,1:leng) :: polR, polH, polT, polc
+complex*16, dimension(:,:), allocatable :: polR, polH, polT, polc
 real*8 conl, conlp, overallcon, l, m, n, lp, mp, np
-real*8 conomeg, con2, tempa(nr), outp(nr), dr(nr)
+real*8 conomeg, con2, tempa(nr), outp(nr), dr(nr), freqdiff
 complex*16 coeffs(1:floor(nr/2.d0)+1), filter(1:floor(nr/2.d0)+1)
 logical asymptotics
 character*3 llow, lhigh
+character*1 dellst
  
 dr(1:nr-1) = r(2:nr)-r(1:nr-1)
 dr(nr) = dr(nr-1)
 
-polR = 0.d0
-polH = 0.d0
-polT = 0.d0
 
 
  call dfftw_plan_dft_r2c_1d(planfwd,nr,tempa(1), coeffs(1), FFTW_ESTIMATE)
@@ -247,88 +244,130 @@ do k=1,floor(nr/2.d0)+1
  filter(k) = cmplx(1.d0/(1.d0 + exp(k - 1 - nr/30.d0)), 0.d0)/dble(nr)
 enddo
 
+leng=0
+ do ell = lmin, lmax
+  ellp = ell + dell
+  do ord = orders(ell,1), orders(ell,2)
+   storderp = lbound(en(ellp)%ords,1)
+   if (ell == ellp) storderp = ord
+   do ordp = storderp, orders(ellp,2)
+    if (existence(ell, ord) .and. existence(ellp,ordp)) then
+     freqdiff = abs(freqnu(ell)%ords(ord) - freqnu(ellp)%ords(ordp))
+     if (freqdiff .gt. sigmax .or. freqdiff .lt. sigmin) cycle
+     leng = leng + 1
+    endif
+   enddo
+  enddo
+ enddo
+allocate(polR(1:nr,1:leng), polH(1:nr,1:leng),polT(1:nr,1:leng),polc(1:nr,1:leng))
+polR = 0.d0
+polH = 0.d0
+polT = 0.d0
+polc = 0.d0
+
 k = 0
  do ell = lmin, lmax
-  do ord = orders(ell,1), orders(ell,2)!ordmin, ordmax
-   if (existence(ell, ord)) then
-    ordp = ord
-    ellp = ell
-   
-    k = k + 1
-    l = dble(ell)
-    lp = l
-  !  lp = dble(ellp)
-    n = dble(ord)
-    np = n
- !   np = dble(ordp)
+  ellp = ell + dell
+  do ord = orders(ell,1),orders(ell,2)
+   storderp = lbound(en(ellp)%ords,1)
+   if (ell == ellp) storderp = ord
+   do ordp = storderp,orders(ellp,2)
 
-    ind = mapfwd(ell,ord)
-    indp = ind
-    conl = dble(omeg(l,0.0d0)**2)
-    conlp = conl
-    conlp = dble(omeg(lp,0.0d0)**2)
+    if (existence(ell, ord) .and. existence(ellp,ordp)) then
+     if (.not.(freqnu(ell)%ords(ord) .ge. freqmin .and. &
+         freqnu(ellp)%ords(ordp) .ge. freqmin .and. &
+         freqnu(ell)%ords(ord) .le. freqmax .and. &
+         freqnu(ellp)%ords(ordp) .le. freqmax)) cycle
 
-    !print *,k!,ord,orders(ell,1),orders(ell,2),ind,existence(ell,ord)
-   if (.not. asymptotics) then
+     freqdiff = abs(freqnu(ell)%ords(ord) - freqnu(ellp)%ords(ordp))
+     if (freqdiff .gt. sigmax .or. freqdiff .lt. sigmin) cycle
 
-    overallcon =  8 * pi *  gamma_l(l) * gamma_l(lp) / ((4*pi)**0.5) 
+     k = k + 1
+     l = dble(ell)
+     lp = dble(ellp)
+     n = dble(ord)
+     np = dble(ordp)
 
-    polR(:,k) = cmplx(0.5*(eigU(:,indp) * deigU(:,ind) - deigU(:,indp) * eigU(:,ind)) * bcoef(0.0d0,lp,dble(s),l,+1.0d0,2) &
-            + 0.5*(eigV(:,indp) * deigV(:,ind) - deigV(:,indp) * eigV(:,ind)) * bcoef(1.0d0,lp,dble(s),l,+1.0d0,2))
+     ind = mapfwd(ell,ord)
+     indp = mapfwd(ellp,ordp)
+     conl = dble(omeg(l,0.0d0)**2)
+     conlp = dble(omeg(lp,0.0d0)**2)
+
+     if (.not. asymptotics) then
+
+      overallcon =  8 * pi *  gamma_l(l) * gamma_l(lp) / ((4*pi)**0.5) 
+  
+      polR(:,k) = cmplx(0.5*(eigU(:,indp) * deigU(:,ind) - deigU(:,indp) * eigU(:,ind)) * bcoef(0.0d0,lp,dble(s),l,+1.0d0,2) &
+             + 0.5*(eigV(:,indp) * deigV(:,ind) - deigV(:,indp) * eigV(:,ind)) * bcoef(1.0d0,lp,dble(s),l,+1.0d0,2))
 
 
-    polR(:,k) = polR(:,k) * cmplx(rho * r**2 * overallcon) * (0.d0, 1.d0)
+      polR(:,k) = polR(:,k) * cmplx(rho * r**2 * overallcon) * (0.d0, 1.d0)
 
-    polH(:,k) = cmplx((conl - conlp) * (eigU(:,ind) * eigU(:,indp) * bcoef(0.0d0,lp,dble(s),l,+1.0d0,2) &
+      polH(:,k) = cmplx((conl - conlp) * (eigU(:,ind) * eigU(:,indp) * bcoef(0.0d0,lp,dble(s),l,+1.0d0,2) &
             + eigV(:,ind) * eigV(:,indp)* bcoef(1.0d0,lp,dble(s),l,+1.0d0,2))  &
             + eigV(:,indp) * eigU(:,ind) * bcoef(1.0d0,lp,l,dble(s),+1.0d0,3)  &
             - eigV(:,ind) * eigU(:,indp) * bcoef(1.0d0,l,lp,dble(s),+1.0d0,3))
 
-    polH(:,k) = polH(:,k) * cmplx(rho * r  * overallcon) * (0.d0, 1.d0)
+      polH(:,k) = polH(:,k) * cmplx(rho * r  * overallcon) * (0.d0, 1.d0)
 
 
-    call dbyd1(tempa, aimag(polH(:,k)), nr, 1, 1)
-    tempa = (drhodr*aimag(polH(:,k)) - tempa*r*stretch)/dble(s*(s+1))
-    call dfftw_execute(planfwd)
-    coeffs = coeffs * filter
-    call dfftw_execute(planinv)
-    polH(:,k) = polR(:,k)
-    polR(:,k) = polR(:,k) + tempa*(0.d0,1.d0) 
-
-    polT(:,k) = cmplx((eigU(:,ind) * eigV(:,indp) + eigV(:,ind) * eigU(:,indp) - eigU(:,ind) * eigU(:,indp) &
+      call dbyd1(tempa, aimag(polH(:,k)), nr, 1, 1)
+      tempa = (drhodr*aimag(polH(:,k)) - tempa*r*stretch)/dble(s*(s+1))
+      call dfftw_execute(planfwd)
+      coeffs = coeffs * filter
+      call dfftw_execute(planinv)
+      polH(:,k) = polR(:,k)
+      polR(:,k) = polR(:,k) + tempa*(0.d0,1.d0) 
+ 
+      polT(:,k) = cmplx((eigU(:,ind) * eigV(:,indp) + eigV(:,ind) * eigU(:,indp) - eigU(:,ind) * eigU(:,indp) &
             - eigV(:,ind) * eigV(:,indp) *(conlp + conl - omeg(dble(s),0.0d0)**2)) * bcoef(1.0d0,lp,dble(s),l,-1.0d0,2))
 
-     polT(:,k) = polT(:,k) * cmplx(rho * r)  * overallcon 
+      polT(:,k) = polT(:,k) * cmplx(rho * r)  * overallcon 
 
-    else
+     else
       polR(:,k) = 0.d0
-      polR(:,k) = (1-2.*modulo(ell,2))*(0.d0,1.d0)*(eigU(:,ind)**2+l*(l+1)*eigV(:,ind)**2)*rho*r*l*(2*l/pi)**0.5
+      !polR(:,k) = (1-2.*modulo(ell,2))*(0.d0,1.d0)*(eigU(:,ind)**2+l*(l+1)*eigV(:,ind)**2)*rho*r*l*(2*l/pi)**0.5
+      polR(:,k) = (1-2.*modulo(ell,2))*(0.d0,1.d0)*(eigU(:,ind)*eigU(:,indp)-eigU(:,ind)*eigV(:,indp)-eigU(:,indp)*eigV(:,ind)+&
+                                                   l*(l+1)*eigV(:,ind)*eigV(:,indp))*rho*r*l*(2*l/pi)**0.5
       polc(:,k) = -(1-2.*modulo(ell,2))*rho*c2*sqrt(2*l/pi)*& 
-          (r*deigU(:,ind) - l*(l+1)*eigV(:,ind) + 2* eigU(:,ind))**2 
+         (r*deigU(:,ind) - l*(l+1)*eigV(:,ind) + 2* eigU(:,ind))*(r*deigU(:,indp) - l*(l+1)*eigV(:,indp) + 2* eigU(:,indp)) 
      endif
-
     endif
    enddo
+  enddo
  enddo
 
  write(llow,'(I3.3)') lmin
  write(lhigh,'(I3.3)') lmax
+ write(dellst,'(I1.1)') dell
+ print *,'Writing out radial points into file radius.fits'
  call writefits('radius.fits',r,nr,1,1)
- call writefits('kernels_'//llow//'_to_'//lhigh//'.fits',aimag(polR),nr,leng,1)
- call writefits('soundspeed_kernels'//llow//'_to_'//lhigh//'.fits',real(polc),nr,leng,1)
+ print *,'Writing out flow kernels into file '//'kernels_'//llow//'_to_'//lhigh//'_dell_'//dellst//'.fits'
+ call writefits(instrument//'_kernels_'//llow//'_to_'//lhigh//'_dell_'//dellst//'.fits',aimag(polR),nr,leng,1)
+ print *,'Writing out sound speed kernels into file '//'soundspeed_kernels_'//llow//'_dell_'//dellst//'_to_'//lhigh//'.fits'
+ call writefits(instrument//'_soundspeed_kernels_'//llow//'_to_'//lhigh//'_dell_'//dellst//'.fits',real(polc),nr,leng,1)
 
-open(333,file='indices_'//llow//'_to_'//lhigh,action='write',status='replace')
+print *,'Writing out metadata into file '//instrument//'_indices_'//llow//'_to_'//lhigh//'_dell_'//dellst
+open(333,file=instrument//'_indices_'//llow//'_to_'//lhigh//'_dell_'//dellst,action='write',status='replace')
 k = 0
- do ell = lmin, lmax
-  do ord = orders(ell,1),orders(ell,2)
-   if (existence(ell,ord)) then
-    ellp = ell
+do ell = lmin, lmax
+ ellp = ell + dell
+ do ord = orders(ell,1),orders(ell,2)
+  storderp = lbound(en(ellp)%ords,1)
+  if (ell == ellp) storderp = ord
+  do ordp = storderp,orders(ellp,2)
+
+   if (existence(ell,ord) .and. existence(ellp,ordp)) then
+    freqdiff = abs(freqnu(ell)%ords(ord) - freqnu(ellp)%ords(ordp))
+    if (freqdiff .gt. sigmax .or. freqdiff .lt. sigmin) cycle
     k=k+1
-    print *,ellp, ell, ord, ordp, s,maxval(abs((polc(:,k)))),maxval(abs((polR(:,k))))
-    write(333,*), ellp,ell,ord,ordp,s
-    endif
-   enddo
+    print *,ell, ord,ellp, ordp, maxval(abs((polc(:,k)))),maxval(abs((polR(:,k))))
+    if (asymptotics) write(333,*), ell,ord,ellp,ordp
+    if (.not. asymptotics) write(333,*), ell,ord,ellp,ordp,s
+   endif
+  enddo
  enddo
+enddo
 close(333)
 call exit()
 

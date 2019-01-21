@@ -146,11 +146,11 @@ subroutine construct_frequencies(inpfile,ll,llp,ynum)
 
   implicit none
   integer i, l, npoints, ind_data(1:25), j, ndata,llp
-  integer minord, maxord, nrecs, ell, ellp, ll, ynum, outp(1)
-
+  integer minord, maxord, nrecs, ell, ellp, ll, outp(1)
+  real*8 ynum
   character*(*) inpfile
   character*3 ellc, ellpc
-  character*2 yc
+  character*3 yc
   character*80 workdir
   !parameter(npoints = 2159)
   !real*8 splits(24,npoints)
@@ -161,11 +161,21 @@ subroutine construct_frequencies(inpfile,ll,llp,ynum)
   integer, allocatable, dimension(:) :: indicesn
   logical lexist
 
+  if (ll < lmin .or. llp < lmin) then
+    print *,'Harmonic degree lower than lmin'
+    stop
+  endif
+
+  if (ll > lmax .or. llp < lmax) then
+    print *,'Harmonic degree greater than lmax'
+    stop
+  endif
+
   ordmin = -1
   ordmax = 100
   write(ellc,'(I3.3)') ll
   write(ellpc,'(I3.3)') llp
-  write(yc,'(I2.2)') ynum
+  write(yc,'(I2.2)') nint((ynum-1)*5.0)+1
   i = getcwd(workdir)
   call system("awk '{ print NF }' "//inpfile//" >"//trim(adjustl(workdir))//"/lengs_"//ellc//"_"//ellpc//'_'//yc)
 
@@ -241,7 +251,6 @@ subroutine construct_frequencies(inpfile,ll,llp,ynum)
       fwhm(l)%ords(minord:maxord), backg(l)%ords(minord:maxord), a1(l)%ords(minord:maxord),&
       adata(1:nsplits,minord:maxord),Po(-l:l, 1:Nsplits),indicesn(1:ndata))
 !Po(-l:l, 1:(Nsplits/2+1))
-
     en(l)%ords(:) = -1.d0
     indicesn = int(ensall(ind_data(1:ndata)))
     en(l)%ords(indicesn) = ensall(ind_data(1:ndata))
@@ -280,11 +289,13 @@ subroutine construct_frequencies(inpfile,ll,llp,ynum)
 
      enddo
 
+ ! if (l==1) print *,i,nus(l)%mn(-1:1,i)
+
     enddo
     deallocate(adata)
 
   enddo
-  
+!stop
 !  open(132,file='frequencies.comparison',action='write',position='rewind',status='replace')
 !  do i=-120,120
 !   write(132,*) nus(120)%mn(i,:)
@@ -303,19 +314,19 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
  Use Ziggurat
  implicit none
 
- integer order, ell, slow, s, m, mp, maxoff, offseti, yearnum, eltp, i, ii
- integer indm, indmp, indm_nu, indmp_nu, ind_nu, t, minoff,  sigind, seed
- integer ordlow, ordhigh,sigoff, siglow, sighigh, ellp, ellt, nyears
- integer emp, emdp, mmin, mmax, signemp, signempt, shif, dl, dm, dmp
- integer minoffp, maxoffp, eldp, delm, dell,lolim,hilim,refind,indst
- integer delmmin, delmmax, basel(1:2), nsig, deltast, daystart
- integer intarr(1:15000), j, k, ierr, emdpmin, emdpmax, reals, nreals
+ integer order, ell, slow, s, m, mp, maxoff, offseti, eltp, i, ii, ords,sign_sig
+ integer indm, indmp, indm_nu, indmp_nu, ind_nu, t, minoff,  sigind, seed,ordtem
+ integer ordlow, ordhigh,sigoff, siglow, sighigh, ellp, ellt,nchunk,signt,orderp
+ integer emp, emdp, mmin, mmax, signemp, signempt, shif, dl, dm, dmp, ordcorr(60,2)
+ integer minoffp, maxoffp, eldp, delm,dell,lolim,hilim,refind,indst,flag,refind0
+ integer delmmin, delmmax, basel(1:2), nsig, deltast, daystart,startind,parity,storderp
+ integer intarr(1:15000), j, k, ierr, emdpmin, emdpmax, reals, nreals,nordcorr,elmax
  parameter(delm = 15, dell = 6, nreals = 10)
  integer, allocatable, dimension(:) :: minoffarr, maxoffarr, seeds
 
  character*4 daynum
  character*3 lch, lch_p, trackch, lchtemp, lowinst
- character*2 ynum, ynum2
+ character*2  ynum, ynum2
 ! character*1 omin, omax
 
  real*8 hilim_mp, lolim_mp, lolim_m, hilim_m, gamnlp, cons, con0, defcon,samprate
@@ -324,6 +335,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
  real*8 nus_m, nus_mp, tstart, tfin, test(-1:1), nj1(-6:6), con,noisevar2(nreals)
  real*8  den(smin:smax), conr, mix1(-6:6), fmode, compar, ref, temp1,mix2(-6:6)
  real*8 noisehalf(1:15000),noiseother(1:15000),noisevar1(nreals,smin:smax)
+ real*8 nyears, yearnum
  complex*16, dimension(1:15000,1:nreals) :: temphalf, tempother
  real*8, dimension(1:40000) :: vec
  real*8, dimension(:), allocatable :: tempm
@@ -351,6 +363,11 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
  if (yearnum == 1) compute_varnoise = .true.
  compute_varnoise = .false.
 
+ if (compute_norms .and. (ell .ne. ellp)) then
+  print *,'ell has to be equal to ellp for compute_norms, quitting.'
+  stop
+ endif
+
  write(trackch,'(I3.3)') nint(1e3*trackrate)
  call compute_wig3j_data_analysis(ell, ellp)
  call cpu_time(tstart)
@@ -363,33 +380,72 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
  write(lch,'(I3.3)') ell
  write(lch_p,'(I3.3)') ellp
 
+ nchunk = nint(nyears*5.0)
 
- write(ynum,'(I2.2)') yearnum
- write(ynum2,'(I2.2)') yearnum+nyears-1
+
 
  if (instrument =='HMI') then
    prefix = outhmidir
    freqdir = freqhmidir
-   nt = 360 * 24 * 80 * nyears
-   daystart = 6328
+   nt = nint(360 * 24 * 80 * nyears)
+   daystart = 6328 + nint((yearnum - 1.0)*5.0)
    samprate = 45.0
+
  elseif (instrument =='MDI') then
    prefix = outmdidir
    freqdir = freqmdidir
-   nt = 360 * 24 * 60 * nyears
+   nt = nint(360 * 24 * 60 * nyears)
    samprate = 60.0
    deltast = 0
-   if (yearnum .gt. 2)  deltast = 288 ! 2224 - 1936
-   daystart = 1216 + deltast
+   if (yearnum .gt. 2.0)  deltast = 288 ! 2224 - 1936
+   daystart = 1216 + deltast + nint((yearnum - 1.0)*5.0)
  endif
  
+ write(ynum,'(I2.2)') nint((yearnum-1)*5.0)+1
+ write(ynum2,'(I2.2)') nchunk
+
+ open(331,file=adjustl(trim(prefix))//'/tracking'//trackch//&
+       '/frequency_metadata_l_'//lch//'_lp_'//lch_p//'_year_'//ynum//'_'//ynum2,status='unknown',&
+       action='write')
+
  !if (instrument == 'MDI') then 
-  t = daystart + (yearnum -1)*360
-  write(daynum, '(I4.4)') t
+  !t = daystart + (yearnum -1)*360
+  write(daynum, '(I4.4)') daystart
   lowinst = Lower(instrument)
   call construct_frequencies (adjustl(trim(freqdir))//'/'//lowinst//'.'//daynum//'.36', ell, &
                                ellp,yearnum)
   ! prefix = '/scratch/shravan/'//instrument
+   nordcorr = 0
+   ordcorr = -1
+  if (.not. compute_norms) then
+   do order=lbound(en(ell)%ords,1),ubound(en(ell)%ords,1)!1,size(en(ell)%ords)
+    if (en(ell)%ords(order)< 0 .or. freqnu(ell)%ords(order) .lt. freqmin) cycle
+    storderp = lbound(en(ellp)%ords,1)
+    if (ell == ellp) storderp = order
+    do orderp = storderp,ubound(en(ellp)%ords,1)!1,size(en(ellp)%ords)
+     if (en(ellp)%ords(orderp)< 0 .or. freqnu(ellp)%ords(orderp) .lt. freqmin) cycle
+    !print *,order,orderp,freqnu(ellp)%ords(orderp) ,freqnu(ell)%ords(order),freqnu(ellp)%ords(orderp) -freqnu(ell)%ords(order)
+     if (abs(freqnu(ellp)%ords(orderp) - freqnu(ell)%ords(order)) .le. sigmax &
+      .and. abs(freqnu(ellp)%ords(orderp) - freqnu(ell)%ords(order)) .ge. sigmin ) then
+      nordcorr=nordcorr+1 
+      ordcorr(nordcorr,1) = en(ell)%ords(order)
+      ordcorr(nordcorr,2) = en(ellp)%ords(orderp)
+     endif
+    enddo
+   enddo
+  else
+   do order=1,size(en(ell)%ords)
+     ordcorr(order,1) = en(ell)%ords(lbound(en(ell)%ords,1)+order-1)
+     ordcorr(order,2) = en(ell)%ords(lbound(en(ell)%ords,1)+order-1)
+   enddo
+   nordcorr = size(en(ell)%ords)
+  endif
+
+  if (nordcorr == 0) then
+   print *,'Couldnt find any resonances within specified frequency range'
+   stop
+  endif 
+
   if (.not. compute_norms) then
    call system('mkdir -p '//adjustl(trim(prefix)))
    call system('mkdir -p '//adjustl(trim(prefix))//'/tracking'//trackch)
@@ -405,22 +461,6 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
   elseif (compute_norms) then
    call system('mkdir -p '//adjustl(trim(prefix))//'/norms')
   endif
-! elseif (instrument == 'HMI') then 
-
-   !prefix = '/scratch/shravan/'//instrument
-!   open(102,file=adjustl(trim(prefix))//'/tracking'//trackch//'/bcoef_metadata_l_'//lch//'_lp_'//lch_p//&
-!     '_year_'//ynum//'_'//ynum2,action='write',status='unknown', position='rewind')
-
-
-!   open(112,file=adjustl(trim(prefix))//'/tracking'//trackch//'/status_l_'//lch//'_lp_'//lch_p//&
-!     '_year_'//ynum//'_'//ynum2,action='write',status='unknown', position='rewind')
-
-!   t = 6328 + (yearnum -1)*360
-!   write(daynum, '(I4.4)') t
-!   call construct_frequencies (adjustl(trim(freqmdidir))//'/hmi.'//daynum//'.36', ell, &
-!                               ellp,yearnum)
-
-! endif
 
  allocate(tempr(609,305))
  call readfits(trim(adjustl(workdir))//'/leaks.fits',tempr,609,305,1)
@@ -447,18 +487,23 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
   endif
   if (flow_analysis) arr => nu(1:nt-1,1)
 
-  nsig = ceiling((sigmax - sigmin)/(dnu*dsig))+1
+  nsig = ceiling(offresonance/(dnu*dsig))+1
 
-  allocate(b_coefs(smin:smax,ordmin:ordmax,1:nsig),&
-   noise(smin:smax,ordmin:ordmax,1:nsig))
+  write(331,*) dnu
+  write(331,*) floor(sigmin/dnu)
+  write(331,*) floor(sigmax/dnu)+dsig
+  write(331,*) dsig
+
+  allocate(b_coefs(smin:smax,1:nordcorr,1:nsig),&
+   noise(smin:smax,1:nordcorr,1:nsig))
   
   if (compute_varnoise) & 
-   allocate(noisevar(smin:smax,ordmin:ordmax,1:nsig))
+   allocate(noisevar(smin:smax,1:nordcorr,1:nsig))
 
 
   if (allocated(shtdata)) deallocate(shtdata)
   allocate(shtdata(0:nt-1, -ell:ell))
-  shtdata(:,0:ell) = shtdat(yearnum, ell, nyears)
+  shtdata(:,0:ell) = shtdat(daystart, ell, nchunk)
 
   do m = -ell,-1
    do offseti = 1, nt-1
@@ -470,7 +515,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
    if (allocated(shtdatap)) deallocate(shtdatap)
    allocate(shtdatap(0:nt-1, -ellp:ellp))
    if (ellp .ne. ell) then
-    shtdatap(:,0:ellp) = shtdat(yearnum, ellp, nyears)
+    shtdatap(:,0:ellp) = shtdat(daystart, ellp, nchunk)
    else
     shtdatap(:,0:ellp) = shtdata(:,0:ell)
    endif
@@ -488,7 +533,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
     !% gammas and nus_res are in muHz
     !% amps are unknown units
 
-   allocate(norms(ordmin:ordmax,-dell:dell,1:2))
+   allocate(norms(0:30,-dell:dell,1:2))
    norms = 0.d0!1.35e-10/nyears
 
 
@@ -498,16 +543,22 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
       eldp = basel(ii)+ dl
       write(lchtemp,'(I3.3)') eldp
       !if (instrument =='HMI') 
-      inquire(file=adjustl(trim(prefix))//'/norms/'//instrument//&
-             '_'//lchtemp//'_year_'//ynum,exist=lexist)
+      inquire(file=adjustl(trim(prefix))//'/norms/'//&
+             lchtemp//'_year_'//ynum//'_'//ynum2,exist=lexist)
 
      !if (instrument =='MDI') inquire(file='/tmp29/shravan/'//instrument//'/norms/'//instrument//&
      !        '_'//lchtemp//'_year_'//ynum,exist=lexist)
+      if (dl==0 .and. (.not.lexist)) then
+       print *,'File doesnt exist:',adjustl(trim(prefix))//'/norms/'//&
+             lchtemp//'_year_'//ynum//'_'//ynum2
+       print *,'Assuming 1e-10 as norm for ', basel(ii)
+       norms(:,0,ii) = 1e-10
+      endif
 
       if (lexist) then
      ! if (instrument=='HMI') 
-       open(1555,file=adjustl(trim(prefix))//'/norms/'//instrument//&
-             '_'//lchtemp//'_year_'//ynum,status='old',action='read')
+       open(1555,file=adjustl(trim(prefix))//'/norms/'//&
+             lchtemp//'_year_'//ynum//'_'//ynum2,status='old',action='read')
 
 !      if (instrument=='MDI') open(1555,file='/tmp29/shravan/'//instrument//'/norms/'//instrument//&
 !             '_'//lchtemp//'_year_'//ynum,status='old',action='read')
@@ -515,15 +566,15 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
        do  
         read(1555,*,IOSTAT=ierr) con0, order
         if (ierr .ne.0) exit
-        if (order .ge. ordmin .and. order .le. ordmax) &
-         norms(order,dl,ii) = con0/nyears
+        !if (ordtem .ge. ordmin .and. ordtem .le. ordmax) &
+         if (order .ne. -1) norms(order,dl,ii) = con0/nyears
        enddo
        close(1555)
       endif
      enddo
     enddo
 
-    do order = ordmin,ordmax
+    do order = 1,nordcorr!ordmin,ordmax
       do sigoff = 1,nsig
        do s = smin, smax
         allocate(b_coefs(s,order,sigoff)%tee(-s:s),noise(s,order,sigoff)%tee(-s:s))
@@ -534,7 +585,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
     enddo
 
     if (compute_varnoise) then
-     do order = ordmin,ordmax
+     do order = 1,nordcorr!ordmin,ordmax
       do sigoff = 1,nsig
        do s = smin, smax
          allocate(noisevar(s,order,sigoff)%tee(-s:s))
@@ -547,28 +598,34 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
 
    else 
    ! if (instrument =='HMI') 
-    open(144,file=adjustl(trim(prefix))//'/norms/'//instrument//'_'//lch//'_year_'//ynum,status='unknown')
+    open(144,file=adjustl(trim(prefix))//'/norms/'//lch//'_year_'//ynum//'_'//ynum2,status='unknown') !instrument//'_'//
 
    ! if (instrument =='MDI') open(144,file='/tmp29/shravan/'//instrument//& ! comment out in production mode
    !  '/norms/'//instrument//'_'//lch//'_year_'//ynum,status='unknown')
 
    endif
 
-
-   do order = ordmin, ordmax
+   do ords = 1,nordcorr!ordmin, ordmax
+     order = ordcorr(ords,1)
+     orderp = ordcorr(ords,2)
      if ((freqnu(ell)%ords(order) < freqmin) .or. (isnan(freqnu(ell)%ords(order))) .or. &
-      (freqnu(ellp)%ords(order) < freqmin) .or. (isnan(freqnu(ellp)%ords(order))) ) cycle
+      (freqnu(ellp)%ords(orderp) < freqmin) .or. (isnan(freqnu(ellp)%ords(orderp))) ) cycle
      minoff = floor((nus(ell)%mn(-ell,order) - 150.d0)/dnu) - 1
-     maxoff = floor((nus(ellp)%mn(ellp,order) + 150.d0)/dnu) + 1
+     maxoff = floor((nus(ellp)%mn(ellp,orderp) + 150.d0)/dnu) + 1
 
-     allocate(prefac(minoff:maxoff,-ellp:ellp),minoffarr(-ellp:ellp),tempm(minoff:maxoff),& 
-     maxoffarr(-ellp:ellp),mask(minoff:maxoff,-ellp:ellp),& !,corr(minoff:maxoff)
+     flag =0 
+     if (freqnu(ellp)%ords(orderp) - freqnu(ell)%ords(order) .lt. 0) flag = 1
+     sign_sig = 1 - 2*flag
+     elmax = max(ell,ellp)
+     allocate(prefac(minoff:maxoff,-ellp:ellp),minoffarr(-elmax:elmax),tempm(minoff:maxoff),& 
+     maxoffarr(-elmax:elmax),mask(minoff:maxoff,-elmax:elmax),& !,corr(minoff:maxoff)
      leaks1(-delm:delm,-ell:ell),abspow1(minoff:maxoff,-ell-dell:ell+dell,-dell:dell), &
      limitpow1(minoff:maxoff,-ell-dell:ell+dell,-dell:dell))
 
      if (.not. compute_norms) &
      allocate(leaks2(-delm:delm,-ellp:ellp),abspow2(minoff:maxoff,-ellp-dell:ellp+dell,-dell:dell), &
      limitpow2(minoff:maxoff,-ellp-dell:ellp+dell,-dell:dell))!,corr(minoff:maxoff))
+
 
      abspow1 = 0.d0
      leaks1 = 0.d0
@@ -596,29 +653,30 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
       do dl = -dell,dell !0,0!
        eldp = basel(ii) + dl
        if (eldp > lmax .or. eldp < lmin) cycle
-       if ((lbound(freqnu(eldp)%ords,1) .gt. order) .or. &
-             (ubound(freqnu(eldp)%ords,1) .lt. order)) cycle
+       ordtem = ordcorr(ords,ii)
+       if ((lbound(freqnu(eldp)%ords,1) .gt. ordtem) .or. &
+             (ubound(freqnu(eldp)%ords,1) .lt. ordtem)) cycle
 
-       if( freqnu(eldp)%ords(order) .lt. freqmin) cycle
+       if( freqnu(eldp)%ords(ordtem) .lt. freqmin) cycle
 
 
 
-       con0 = norms(order,dl,ii)
+       con0 = norms(ordtem,dl,ii)
        if (con0 > 1e-6) & 
         con0 = 0.d0!sum(norms(:,dl))/size(norms(:,dl),1)
 
        if (compute_norms) con0 = 1.d0 !comment this out in production mode
        fmode = 278.6/696.d0  * 1e6 * (eldp+0.5) /(4.*pi*2)
-       if (ii==1) mix1(dl) = fmode/freqnu(eldp)%ords(order)**2
-       if (ii==2) mix2(dl) = fmode/freqnu(eldp)%ords(order)**2
-       gamnlp = fwhm(eldp)%ords(order)
-       if (ii==1) nj1(dl) = con0 * gamnlp * (amps(eldp)%ords(order) *  & !
-       freqnu(eldp)%ords(order)) **2 * (2*pi)**3 * 1e-18
-       if (ii==2) nj2(dl) = con0 * gamnlp * (amps(eldp)%ords(order) *  & !
-       freqnu(eldp)%ords(order)) **2 * (2*pi)**3 * 1e-18
+       if (ii==1) mix1(dl) = fmode/freqnu(eldp)%ords(ordtem)**2
+       if (ii==2) mix2(dl) = fmode/freqnu(eldp)%ords(ordtem)**2
+       gamnlp = fwhm(eldp)%ords(ordtem)
+       if (ii==1) nj1(dl) = con0 * gamnlp * (amps(eldp)%ords(ordtem) *  & !
+       freqnu(eldp)%ords(ordtem)) **2 * (2*pi)**3 * 1e-18
+       if (ii==2) nj2(dl) = con0 * gamnlp * (amps(eldp)%ords(ordtem) *  & !
+       freqnu(eldp)%ords(ordtem)) **2 * (2*pi)**3 * 1e-18
 
        do emdp =-eldp,eldp
-        nulmn = nus(eldp)%mn(emdp,order)
+        nulmn = nus(eldp)%mn(emdp,ordtem)
         minoff = max(floor((nulmn - 15*gamnlp)/dnu) -floor(sigmax/dnu)*3,minoffp)
         maxoff = min(floor((nulmn + 15*gamnlp)/dnu) + floor(sigmax/dnu)*3,maxoffp)
         if(ii==1)limitpow1(minoff:maxoff,emdp,dl) = - 1.d0/(nu(minoff:maxoff,1)**2 - &
@@ -635,8 +693,8 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
          delmmax = min(delm, eldp)
          leaks1 = (rleaks1(:,:,dl) + mix1(dl) * horleaks1(:,:,dl))**2
          do m=-ell,ell
-          lolim = floor((nus(ell)%mn(m,order) - 2*gamnlp)/dnu) 
-          hilim = floor((nus(ell)%mn(m,order) + 2*gamnlp)/dnu)
+          lolim = floor((nus(ell)%mn(m,ordtem) - 2*gamnlp)/dnu) 
+          hilim = floor((nus(ell)%mn(m,ordtem) + 2*gamnlp)/dnu)
           do emdp = max(m-delm,-eldp), min(m+delm,eldp)
            dm = emdp - m
            conr = sum(abspow1(lolim:hilim,emdp,dl))*nj1(dl)*leaks1(dm,m) + conr
@@ -645,18 +703,18 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
          if (dl==0) then !print *,nj(dl),freqnu(eldp)%ords(order),gamnlp,'aa',order
 
          
-          lolim = floor((nus(ell)%mn(0,order) - 2*gamnlp)/dnu) 
-          hilim = floor((nus(ell)%mn(0,order) + 2*gamnlp)/dnu)
+          lolim = floor((nus(ell)%mn(0,ordtem) - 2*gamnlp)/dnu) 
+          hilim = floor((nus(ell)%mn(0,ordtem) + 2*gamnlp)/dnu)
           con = sum(abs(shtdata(lolim:hilim,0)**2.))
 
           do m=1,ell
           
-           lolim = floor((nus(ell)%mn(m,order) - 2*gamnlp)/dnu) 
-           hilim = floor((nus(ell)%mn(m,order) + 2*gamnlp)/dnu)
+           lolim = floor((nus(ell)%mn(m,ordtem) - 2*gamnlp)/dnu) 
+           hilim = floor((nus(ell)%mn(m,ordtem) + 2*gamnlp)/dnu)
 
            con = sum(abs(shtdata(lolim:hilim,m)**2.)) + con
-           lolim = floor((nus(ell)%mn(-m,order) - 2*gamnlp)/dnu) 
-           hilim = floor((nus(ell)%mn(-m,order) + 2*gamnlp)/dnu)
+           lolim = floor((nus(ell)%mn(-m,ordtem) - 2*gamnlp)/dnu) 
+           hilim = floor((nus(ell)%mn(-m,ordtem) + 2*gamnlp)/dnu)
            con = sum(abs(shtdata(lolim:hilim,-m)**2.)) + con
 
           enddo
@@ -670,20 +728,26 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
        if (compute_norms) then
    !print *,con,conr,isnan(conr)
         if (isnan(conr)) con = 0.d0
-        print *,con,conr,con/conr,order!,nj,freqnu(ell-dell:ell+dell)%ords(order)
-        write(144,*) con/conr,order!nus(ell)%mn(m,order),m
+        print *,con,conr,con/conr,ordtem!,nj,freqnu(ell-dell:ell+dell)%ords(order)
+        write(144,*) con/conr,ordtem!nus(ell)%mn(m,order),m
         deallocate(prefac, minoffarr, maxoffarr, limitpow1, abspow1,leaks1,&
          tempm,mask) 
         cycle
        endif
 !! here
       gamnl = fwhm(ell)%ords(order)
-      gamnlp = fwhm(ellp)%ords(order)
+      gamnlp = fwhm(ellp)%ords(orderp)
 
       if (any(en(ell)%ords .eq. order) .and. (freqnu(ell)%ords(order) .ne. 0) &
-       .and. any(en(ellp)%ords .eq. order) .and. (freqnu(ellp)%ords(order) .ne. 0)) then
+       .and. any(en(ellp)%ords .eq. orderp) .and. (freqnu(ellp)%ords(orderp) .ne. 0)) then
+
+         refind0 = nint(abs(freqnu(ellp)%ords(orderp) - freqnu(ell)%ords(order))/dnu) !+ nint(rand())*(1-2*nint(rand()))
+         write(331,*) ell,order,freqnu(ell)%ords(order), ellp,orderp,freqnu(ellp)%ords(orderp)
 
          do t = -smax, smax 
+
+          signt = t - 2*flag*t
+          parity = 1 - 2 *modulo(abs(t),2)
 
 !          if (t==0) cycle
           slow = max(smin, abs(t))
@@ -691,13 +755,16 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
           mmax = min(ell,ellp-t)
 
            ! Tracking rate! trackrate
-          refind = nint(t*(trackrate - rotEarth)/dnu) !+ nint(rand())*(1-2*nint(rand()))
-          siglow = refind + floor(sigmin/dnu) !- dsigind
-          sighigh = refind + floor(sigmax/dnu)
+          refind = refind0 + nint(t*(trackrate - rotEarth)/dnu)
+          siglow = refind !+ floor(sigmin/dnu) !- dsigind
+          sighigh = refind + floor(offresonance/dnu)
           sigind = 0
-          print *,t,order, ell
-          write(112,*) t, order, siglow, sighigh, t*a1(ellp)%ords(order)
+          print *,t, ell,order,  ellp, orderp
+
+          write(112,*) t, order, orderp, siglow, sighigh, t*a1(ell)%ords(order), t*a1(ellp)%ords(orderp)
           flush(112)
+          flush(331)
+
 
           do sigoff = siglow,sighigh,dsig
             !if (sigoff == refind) cycle
@@ -706,13 +773,13 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
             noisehalf = 0.d0
             den(smin:smax) = 0.d0
             !sigind = sigoff - refind
-            sig = sigoff * dnu!t * (trackrate - rotEarth) + sigind*dnu 
+            sig = sign_sig*sigoff * dnu!t * (trackrate - rotEarth) + sigind*dnu 
             do m = mmin, mmax
 
               mp = m + t
 !              if (m==0 .or. (mp==0)) cycle
               nulmn = nus(ell)%mn(m,order)
-              nulmnt = nus(ellp)%mn(mp,order)
+              nulmnt = nus(ellp)%mn(mp,orderp)
 
               lolim_m = nulmn - gamnl
               hilim_m = nulmn + gamnl
@@ -721,10 +788,15 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
 
               minoff = floor(min(lolim_m,lolim_mp)/dnu)-1
               maxoff = floor(max(hilim_m,hilim_mp)/dnu)+1 ! mistake, was lolim_m
+!              print *,lolim_mp, hilim_mp, lolim_m, hilim_m,nu(minoff,1),nu(maxoff,1)
+              !if (flag==1) then
+              ! k = minoff
+              ! maxoff = minoff
+              ! minoff = k
+              !endif
          
               minoffarr(m) = minoff
               maxoffarr(m) = maxoff
-
               mask(minoff:maxoff,m) = 0.d0
               where ((((lolim_mp .le. nu(minoff:maxoff,1)) .and. (hilim_mp .ge. nu(minoff:maxoff,1))) &
               .or. ((lolim_m .le. nu(minoff:maxoff,1)) .and. (hilim_m .ge. nu(minoff:maxoff,1))))) mask(minoff:maxoff,m) = 1.d0
@@ -737,14 +809,14 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
                endif
               enddo
               prefac(intarr(1:k),m) =-2*arr(intarr(1:k))*2*pi*1e-6* leakage(ell)%ems(m)*&
-              leakage(ellp)%ems(mp)* (nj1(0)*limitpow2(intarr(1:k)+sigoff,mp,0)*abspow1(intarr(1:k),m,0)&
-              + nj2(0)*conjg(limitpow1(intarr(1:k),m,0))*abspow2(intarr(1:k)+sigoff,mp,0)) 
+              leakage(ellp)%ems(mp)* (nj1(0)*limitpow2(intarr(1:k)+sign_sig*sigoff,mp,0)*abspow1(intarr(1:k),m,0)&
+              + nj2(0)*conjg(limitpow1(intarr(1:k),m,0))*abspow2(intarr(1:k)+sign_sig*sigoff,mp,0)) 
              
               conr = sum(abs(prefac(intarr(1:k),m))**2)
 
-              conp =sum(prefac(intarr(1:k),m)*conjg(shtdata(intarr(1:k),m))*shtdatap(intarr(1:k)+sigoff,mp)) 
+              conp =sum(prefac(intarr(1:k),m)*conjg(shtdata(intarr(1:k),m))*shtdatap(intarr(1:k)+sign_sig*sigoff,mp)) 
               do s = slow,smax
-               b_coefs(s,order, sigind)%tee(t) = b_coefs(s,order,sigind)%tee(t) +  conp*wig(s)%sub3j(t,m)
+               b_coefs(s,ords, sigind)%tee(signt) = b_coefs(s,ords,sigind)%tee(signt) +  conp*wig(s)%sub3j(t,m)
                den(s) =  conr*wig(s)%sub3j(t,m)**2  + den(s) !
          !      print *,s,t,conr,wig(s)%sub3j(t,m)
               enddo ! s loop
@@ -807,11 +879,11 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
                   leaks2 = rleaks2(-delm:delm,:,dl) + mix2(dl) * horleaks2(-delm:delm,:,dl)
                   do emdp =emdpmin,emdpmax
                    consp = leaks2(emdp-m-t,m+t) * leaks2(emdp-emp-t,emp+t)*nj2(dl)
-                   noiseother(1:k) = noiseother(1:k) + consp * abspow2(intarr(1:k)+sigoff,emdp,dl)
+                   noiseother(1:k) = noiseother(1:k) + consp * abspow2(intarr(1:k)+sign_sig*sigoff,emdp,dl)
                    if (compute_varnoise) then
                     do reals = 1,nreals
                      do indst=1,k
-                      tempother(indst,reals) = consp * abspow2(intarr(indst)+sigoff,emdp,dl) * &
+                      tempother(indst,reals) = consp * abspow2(intarr(indst)+sign_sig*sigoff,emdp,dl) * &
                             (cmplx(rnor(),-rnor()))*cmplx(rnor(),rnor())*0.5 +&
                                           tempother(indst,reals)
        
@@ -837,7 +909,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
 
                do s = slow, smax
                 cons = wig(s)%sub3j(t,m) * wig(s)%sub3j(t,emp)
-                noise(s,order,sigind)%tee(t) = noise(s,order,sigind)%tee(t) + conr * cons 
+                noise(s,ords,sigind)%tee(signt) = noise(s,ords,sigind)%tee(signt) + conr * cons 
                 if (compute_varnoise) noisevar1(:,s) = noisevar1(:,s) + noisevar2 * cons
                enddo
            
@@ -849,10 +921,11 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
            den = 1.d0/(den + 1e-10)
            !if (any(isnan(den))) den=0.d0
            do s = slow, smax
-            b_coefs(s,order,sigind)%tee(t) = b_coefs(s,order,sigind)%tee(t)*den(s)
+            b_coefs(s,ords,sigind)%tee(signt) = b_coefs(s,ords,sigind)%tee(signt)*den(s)
+            if (signt .ne. t) b_coefs(s,ords,sigind)%tee(signt) = conjg(b_coefs(s,ords,sigind)%tee(signt))*parity
             if (compute_noise) then
-             noise(s,order,sigind)%tee(t) = noise(s,order,sigind)%tee(t) * den(s)**2
-             if (compute_varnoise) noisevar(s,order,sigind)%tee(t) = sum(noisevar1(:,s)**2,1)/dble(nreals) * den(s)**4 
+             noise(s,ords,sigind)%tee(signt) = noise(s,ords,sigind)%tee(signt) * den(s)**2
+             if (compute_varnoise) noisevar(s,ords,sigind)%tee(signt) = sum(noisevar1(:,s)**2,1)/dble(nreals) * den(s)**4 
             endif
            enddo
 
@@ -876,22 +949,15 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
  ! if (instrument=='HMI') 
   !if (instrument=='MDI') call system('rm /tmp29/shravan/'//instrument//'/processed/'//ynum//'_'//lch)
   call system('rm '//adjustl(trim(workdir))//'/lengs_'//lch//'_'//lch_p//'_'//ynum)
-  call system('rm '//adjustl(trim(prefix))//'/processed/'//lch//'_'//lch_p//'_'//ynum)
+  call system('rm -f '//adjustl(trim(prefix))//'/processed/'//lch//'_'//lch_p//'_'//ynum)
   if (compute_norms) then
    call exit()
   endif
 
  !if (instrument =='HMI') 
   call writefits_bcoef_same(adjustl(trim(prefix))//'/tracking'//trackch//'/', &
-      ell, ellp, yearnum, nyears, nsig, compute_noise, compute_varnoise)
+      ell, ellp, yearnum, nchunk, nsig, nordcorr, compute_noise, compute_varnoise)
 
-  open(331,file=adjustl(trim(prefix))//'/tracking'//trackch//&
-       '/frequency_metadata_l_'//lch//'_lp_'//lch_p//'_year_'//ynum//'_'//ynum2,status='unknown',&
-       action='write')
-  write(331,*) dnu
-  write(331,*) floor(sigmin/dnu)
-  write(331,*) floor(sigmax/dnu)+dsig
-  write(331,*) dsig
   close(331)
  !if (instrument =='MDI') call writefits_bcoef_same('/tmp29/shravan/'//instrument//'/tracking'//trackch//'/', &
  !     ell, ellp, yearnum, nyears, compute_noise, compute_varnoise)
@@ -922,7 +988,7 @@ END function distmat
 
 !================================================================================
 
-FUNCTION shtdat(yearnum, ell, nyears)
+FUNCTION shtdat(startpoint, ell, nmax)
 
 implicit none
 
@@ -956,10 +1022,10 @@ complex*16, allocatable, dimension(:,:) :: inp, shtdat
 
 if (instrument == 'MDI') then
   deltast = 0
-  startpoint = 1216
+!  startpoint = 1216
   dt = 60.d0
 !  domega = 2.d0*pi/(360.d0*24.d0*60.d0*60.d0)
-  nt = 360 * 24 * 60 * nyears
+  nt = 72 * 24 * 60 * nmax
   nt72 = 72 * 24 * 60 
   twont72 = 2 * 72 * 24 * 60 
   if (yearnum .gt. 2)  deltast = 288 ! 2224 - 1936
@@ -970,15 +1036,15 @@ if (instrument == 'MDI') then
   call dfftw_plan_guru_dft(fwdplan,1,nt,1,1,1,ell+1,&
      & nt,nt,inp(1,1),shtdat(1,1),FFTW_BACKWARD,FFTW_ESTIMATE)
 
-  st = (yearnum-1)*360 + startpoint + deltast
 
  ! if (ell .ge. 100) 
   write(ellc,'(I3.3)') ell
   !if (ell .lt. 100) write(el,'(I2.2)') ell
 
-  nmax = nyears*5-1
+  !nmax = nyears*5-1
 
-  do i=0,nmax
+  st = startpoint !+ deltast
+  do i=0,nmax-1
    write(daynum,'(I4.4)') st
    call readfits(trim(adjustl(mdidir))//'/MDI_'//ellc//'_' &
        //daynum//'.fits', dat, twont72,ell+1,1)
@@ -1018,10 +1084,10 @@ if (instrument == 'MDI') then
 
 elseif (instrument == 'HMI') then
 
-  startpoint = 6328
+!  startpoint = 6328
   dt = 45.d0
 !  domega = 2.d0*pi/(360.d0*24.d0*60.d0*60.d0)
-  nt = 360 * 24 * 80 * nyears
+  nt = 72 * 24 * 80 * nmax
   nt72 = 72 * 24 * 80 
   twont72 = 2 * 72 * 24 * 80 
 
@@ -1034,14 +1100,13 @@ elseif (instrument == 'HMI') then
 !  call dfftw_plan_many_dft(fwdplan,1,nt,ell+1,&
 !     & inp(1,1),nt,1,nt,shtdat(1,1),nt,1,nt,FFTW_BACKWARD,FFTW_ESTIMATE)
 
-  st = (yearnum-1)*360 + startpoint 
 
   if (ell .ge. 100) write(el,'(I3.3)') ell
   if (ell .lt. 100) write(el,'(I2.2)') ell
 
   write(ellc,'(I3.3)') ell
 
-  nmax = nyears*5-1
+!  nmax = nyears*5-1
  ! open(325,file='/scr28/shravan/locations/locs_ell_'//ellc,action='read',&
  !      position='rewind',status='old',form='FORMATTED')
  ! stnew = (yearnum-1)*5
@@ -1049,7 +1114,8 @@ elseif (instrument == 'HMI') then
  !  read(325,'(A)') 
  ! enddo
 
-  do i=0,nmax
+  st = startpoint  !(yearnum-1)*360 + 
+  do i=0,nmax-1
  !  read(325,'(A)') dirloc
    write(daynum,'(I4.4)') st
    call readfits(trim(adjustl(hmidir))//'/HMI_'//ellc//'_'//daynum//'.fits',dat,twont72,ell+1,1)
@@ -1074,14 +1140,14 @@ END FUNCTION SHTDAT
 
 !================================================================================
 
-        SUBROUTINE writefits_bcoef_same (directory, l, lp, yearnum, nyears, nsig, compute_noise, &
-                                         compute_varnoise)
+        SUBROUTINE writefits_bcoef_same (directory, l, lp, yearnum, nchunk, nsig,  &
+                                         nordcorr,compute_noise,compute_varnoise)
 
         implicit none 
 
         integer blocksize,bitpix,naxes(7),unit1, s, i0, isg
-        integer i1, i2, i3, i4, l, lp, yearnum, ind, ns, sig
-        integer status1,group,fpixel,flag, nelements, nyears, nsig
+        integer i1, i2, i3, i4, l, lp, ind, ns, sig,nordcorr
+        integer status1,group,fpixel,flag, nelements, nchunk, nsig
 
 	character*80 filename
         character*(*) directory
@@ -1091,6 +1157,7 @@ END FUNCTION SHTDAT
 
 	logical simple,extend, exists, compute_noise, compute_varnoise
 
+        real*8 yearnum
         real*8, allocatable, dimension(:,:,:) :: tempreal
         real*8, allocatable, dimension(:,:,:,:) :: temp
 
@@ -1100,8 +1167,8 @@ END FUNCTION SHTDAT
 
 !        write(omin,'(I1.1)') ordmin
 !        write(omax,'(I1.1)') ordmax
-        write(ynum,'(I2.2)') yearnum
-        write(ynum2,'(I2.2)') yearnum+nyears-1
+        write(ynum,'(I2.2)') nint(5.0*(yearnum-1.0)) + 1
+        write(ynum2,'(I2.2)') nchunk!yearnum+nyears-1
 
 
          ! WRITING OUT SIGNAL
@@ -1129,18 +1196,18 @@ END FUNCTION SHTDAT
 	  bitpix=-64
           ns = (smax + 1)**2
 	  naxes(1)=ns
-	  naxes(2)=ordmax - ordmin + 1
+	  naxes(2)=nordcorr
 !	  naxes(3)=ordmax - ordmin + 1
 	  naxes(3)=nsig
 	  naxes(4)=2
 
-          allocate(temp(1:ns,ordmin:ordmax,1:nsig, 2))
-          allocate(tempreal(1:ns,ordmin:ordmax,1:nsig))
+          allocate(temp(1:ns,1:nordcorr,1:nsig, 2))
+          allocate(tempreal(1:ns,1:nordcorr,1:nsig))
 
           temp = 0.d0
           ind = 0
           do i4=1,nsig
-            do i2 = ordmin, ordmax
+            do i2 = 1,nordcorr!ordmin, ordmax
              do i1 = smin, smax
               do i0 = -i1, i1
                sig = 1-modulo(i0,2)*2
@@ -1192,14 +1259,14 @@ END FUNCTION SHTDAT
 	  bitpix=-64
           ns = (smax + 1)**2
 	  naxes(1)=ns
-	  naxes(2)=ordmax - ordmin + 1
+	  naxes(2)= nordcorr !ordmax - ordmin + 1
 !	  naxes(3)=ordmax - ordmin + 1
 	  naxes(3)=nsig
 
           tempreal = 0.d0
           ind = 0
           do i4=1,nsig
-            do i2 = ordmin, ordmax
+            do i2 = 1,nordcorr!ordmin, ordmax
              do i1 = smin, smax
               do i0 = -i1, i1
                ind = i1*(i1+1) + i0 + 1
@@ -1256,7 +1323,7 @@ END FUNCTION SHTDAT
            tempreal = 0.d0
            ind = 0
            do i4=1, nsig
-             do i2 = ordmin, ordmax
+             do i2 = 1,nordcorr!ordmin, ordmax
               do i1 = smin, smax
                do i0 = -i1, i1
                 ind = i1*(i1+1) + i0 + 1
@@ -1287,7 +1354,8 @@ END FUNCTION SHTDAT
           do i0 = ordmin, ordmax
             write(102,*) int(en(l)%ords(i0)), freqnu(l)%ords(i0), a1(l)%ords(i0), &
                        int(en(lp)%ords(i0)), freqnu(lp)%ords(i0), a1(lp)%ords(i0)
-          enddo
+         enddo
+         flush(102)
 !           write(102,*) 'Ell: '
 !           write(102,*) l
 !           write(102,*)
