@@ -348,6 +348,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
  logical compute_noise, lexist, compute_ab_initio, compute_varnoise
  logical restart
  character*80 prefix, workdir, freqdir
+ character(len=120) tarcmd
 
  basel = (/ell, ellp/)
  
@@ -522,7 +523,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
 
    do m = -ellp,-1
     do offseti = 1, nt-1
-     shtdatap(offseti,m) = (1-2*modulo(-m,2))*conjg(shtdatap(nt-offseti,-m))
+      shtdatap(offseti,m) = (1-2*modulo(-m,2))*conjg(shtdatap(nt-offseti,-m))
     enddo
    enddo
   endif
@@ -560,8 +561,8 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
        open(1555,file=adjustl(trim(prefix))//'/norms/'//&
              lchtemp//'_year_'//ynum//'_'//ynum2,status='old',action='read')
 
-!      if (instrument=='MDI') open(1555,file='/tmp29/jb6888/'//instrument//'/norms/'//instrument//&
-!             '_'//lchtemp//'_year_'//ynum,status='old',action='read')
+      !      if (instrument=='MDI') open(1555,file='/tmp29/jb6888/'//instrument//'/norms/'//instrument//&
+      !             '_'//lchtemp//'_year_'//ynum,status='old',action='read')
 
        do  
         read(1555,*,IOSTAT=ierr) con0, order
@@ -943,6 +944,8 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
          abspow2,limitpow2,tempm,mask) 
    enddo ! order loop
 
+   close(144)
+
   call cpu_time(tfin)
   print *,'Computational time:',tfin-tstart
 !  if (compute_norms) then 
@@ -951,7 +954,23 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
   call system('rm '//adjustl(trim(workdir))//'/lengs_'//lch//'_'//lch_p//'_'//ynum)
   call system('rm -f '//adjustl(trim(prefix))//'/processed/'//lch//'_'//lch_p//'_'//ynum)
   if (compute_norms) then
-   call exit()
+    
+    ! Check if the tarball exists. If it does then append to it, else create a new one
+    inquire(file=trim(prefix)//'/norms/'//lch//'.tar',exist=lexist)
+
+    if (lexist) then
+      tarcmd = "tar -uf "//trim(prefix)//'/norms/'//lch//".tar -C "//trim(prefix)//'/norms'//" "//&
+        lch//'_year_'//ynum//'_'//ynum2//" --remove-files"
+      print*,trim(tarcmd)
+      call system(trim(tarcmd))
+    else
+      tarcmd = "tar -cf "//trim(prefix)//'/norms/'//lch//".tar -C "//trim(prefix)//'/norms'//" "//&
+        lch//'_year_'//ynum//'_'//ynum2//" --remove-files"
+      print*,trim(tarcmd)
+      call system(trim(tarcmd))
+    endif
+
+    call exit()
   endif
 
  !if (instrument =='HMI') 
@@ -1148,13 +1167,13 @@ END FUNCTION SHTDAT
         integer i1, i2, i3, i4, l, lp, ind, ns, sig,nordcorr
         integer status1,group,fpixel,flag, nelements, nchunk, nsig
 
-	character*80 filename
+  character*80 filename
         character*(*) directory
         character*3 lch, lch_p
         character*2 ynum2, ynum
 !        character*1 omin, omax
 
-	logical simple,extend, exists, compute_noise, compute_varnoise
+  logical simple,extend, exists, compute_noise, compute_varnoise
 
         real*8 yearnum
         real*8, allocatable, dimension(:,:,:) :: tempreal
@@ -1186,19 +1205,19 @@ END FUNCTION SHTDAT
           if (exists) call system('rm '//filename)
           print *,'Writing file '//filename
 
-	  status1 = 0
-	  call ftgiou(unit1,status1)
-	  blocksize=1
-!	 dump_array = dble(temp)
-	  call ftinit(unit1,trim(adjustl(filename)),blocksize,status1)
-	  simple=.true.
-	  bitpix=-64
+    status1 = 0
+    call ftgiou(unit1,status1)
+    blocksize=1
+!  dump_array = dble(temp)
+    call ftinit(unit1,trim(adjustl(filename)),blocksize,status1)
+    simple=.true.
+    bitpix=-64
           ns = (smax + 1)**2
-	  naxes(1)=ns
-	  naxes(2)=nordcorr
-!	  naxes(3)=ordmax - ordmin + 1
-	  naxes(3)=nsig
-	  naxes(4)=2
+    naxes(1)=ns
+    naxes(2)=nordcorr
+!   naxes(3)=ordmax - ordmin + 1
+    naxes(3)=nsig
+    naxes(4)=2
 
           allocate(temp(1:ns,1:nordcorr,1:nsig, 2))
           allocate(tempreal(1:ns,1:nordcorr,1:nsig))
@@ -1223,15 +1242,15 @@ END FUNCTION SHTDAT
             enddo
           enddo
 
-	  nelements=naxes(1)*naxes(2)*naxes(3)*naxes(4)!*2
-	  extend=.false.
-	  group=1
-	  fpixel=1
+    nelements=naxes(1)*naxes(2)*naxes(3)*naxes(4)!*2
+    extend=.false.
+    group=1
+    fpixel=1
 
-	  call ftphpr(unit1,simple,bitpix,4,naxes,0,1,extend,status1)
-	  call ftpprd(unit1,group,fpixel,nelements,temp,status1)
-	  call ftclos(unit1, status1)
-	  call ftfiou(unit1, status1)
+    call ftphpr(unit1,simple,bitpix,4,naxes,0,1,extend,status1)
+    call ftpprd(unit1,group,fpixel,nelements,temp,status1)
+    call ftclos(unit1, status1)
+    call ftfiou(unit1, status1)
 
          ! WRITING OUT SIGNAL
 
@@ -1249,18 +1268,18 @@ END FUNCTION SHTDAT
           if (exists) call system('rm '//filename)
           print *,'Writing file '//filename
 
-	  status1 = 0
-	  call ftgiou(unit1,status1)
-	  blocksize=1
-!	 dump_array = dble(temp)
-	  call ftinit(unit1,trim(adjustl(filename)),blocksize,status1)
-	  simple=.true.
-	  bitpix=-64
+    status1 = 0
+    call ftgiou(unit1,status1)
+    blocksize=1
+!  dump_array = dble(temp)
+    call ftinit(unit1,trim(adjustl(filename)),blocksize,status1)
+    simple=.true.
+    bitpix=-64
           ns = (smax + 1)**2
-	  naxes(1)=ns
-	  naxes(2)= nordcorr !ordmax - ordmin + 1
-!	  naxes(3)=ordmax - ordmin + 1
-	  naxes(3)=nsig
+    naxes(1)=ns
+    naxes(2)= nordcorr !ordmax - ordmin + 1
+!   naxes(3)=ordmax - ordmin + 1
+    naxes(3)=nsig
 
           tempreal = 0.d0
           ind = 0
@@ -1281,15 +1300,15 @@ END FUNCTION SHTDAT
             enddo
           enddo
 
-	  nelements=naxes(1)*naxes(2)*naxes(3)
-	  extend=.false.
-	  group=1
-	  fpixel=1
+    nelements=naxes(1)*naxes(2)*naxes(3)
+    extend=.false.
+    group=1
+    fpixel=1
 
-	  call ftphpr(unit1,simple,bitpix,3,naxes(1:3),0,1,extend,status1)
-	  call ftpprd(unit1,group,fpixel,nelements,tempreal,status1)
-	  call ftclos(unit1, status1)
-	  call ftfiou(unit1, status1)
+    call ftphpr(unit1,simple,bitpix,3,naxes(1:3),0,1,extend,status1)
+    call ftpprd(unit1,group,fpixel,nelements,tempreal,status1)
+    call ftclos(unit1, status1)
+    call ftfiou(unit1, status1)
 
 
           if (compute_varnoise) then 
@@ -1306,18 +1325,18 @@ END FUNCTION SHTDAT
            if (exists) call system('rm '//filename)
            print *,'Writing file '//filename
 
-	   status1 = 0
-	   call ftgiou(unit1,status1)
-	   blocksize=1
-!	 dump_array = dble(temp)
-	   call ftinit(unit1,trim(adjustl(filename)),blocksize,status1)
-	   simple=.true.
-	   bitpix=-64
+     status1 = 0
+     call ftgiou(unit1,status1)
+     blocksize=1
+!  dump_array = dble(temp)
+     call ftinit(unit1,trim(adjustl(filename)),blocksize,status1)
+     simple=.true.
+     bitpix=-64
            ns = (smax + 1)**2
-	   naxes(1)=ns
-	   naxes(2)=ordmax - ordmin + 1
-!	  naxes(3)=ordmax - ordmin + 1
-	   naxes(3)=nsig !sigmax!-sigmin+1
+     naxes(1)=ns
+     naxes(2)=ordmax - ordmin + 1
+!   naxes(3)=ordmax - ordmin + 1
+     naxes(3)=nsig !sigmax!-sigmin+1
 
            tempreal = 0.d0
            ind = 0
@@ -1335,15 +1354,15 @@ END FUNCTION SHTDAT
              enddo
            enddo
 
-	   nelements=naxes(1)*naxes(2)*naxes(3)
-	   extend=.false.
-	   group=1
-	   fpixel=1
+     nelements=naxes(1)*naxes(2)*naxes(3)
+     extend=.false.
+     group=1
+     fpixel=1
  
-	   call ftphpr(unit1,simple,bitpix,3,naxes(1:3),0,1,extend,status1)
-	   call ftpprd(unit1,group,fpixel,nelements,tempreal,status1)
-	   call ftclos(unit1, status1)
-	   call ftfiou(unit1, status1)
+     call ftphpr(unit1,simple,bitpix,3,naxes(1:3),0,1,extend,status1)
+     call ftpprd(unit1,group,fpixel,nelements,tempreal,status1)
+     call ftclos(unit1, status1)
+     call ftfiou(unit1, status1)
           
            deallocate(temp,tempreal)
           endif
@@ -1374,7 +1393,7 @@ END FUNCTION SHTDAT
 !           write(102,*) dnu
            
 
-	 end SUBROUTINE writefits_bcoef_same
+   end SUBROUTINE writefits_bcoef_same
 
 !================================================================================
 
@@ -1416,55 +1435,55 @@ END SUBROUTINE compute_wig3j_data_analysis
 
 !================================================================================
 
-	 SUBROUTINE readfits(filename,readarr,dim1,dime2,dim3)
+   SUBROUTINE readfits(filename,readarr,dim1,dime2,dim3)
 
-	  implicit none
-	  integer status,unit,readwrite,blocksize,naxes(3)
-	  integer group,firstpix, dim3 ,dime2,dim1
-	  integer nelements, hdutype
-	  real*8 readarr(dim1,dime2,dim3)
-	  real*8 nullval!,temp(dim1,dime2,dim3)
-	  logical anynull, lexist
-	  character*(*) filename
+    implicit none
+    integer status,unit,readwrite,blocksize,naxes(3)
+    integer group,firstpix, dim3 ,dime2,dim1
+    integer nelements, hdutype
+    real*8 readarr(dim1,dime2,dim3)
+    real*8 nullval!,temp(dim1,dime2,dim3)
+    logical anynull, lexist
+    character*(*) filename
 
-	      
-	  status=0
-	  call ftgiou(unit,status)
-	  readwrite=0
+        
+    status=0
+    call ftgiou(unit,status)
+    readwrite=0
           inquire(file=filename, exist = lexist)
           if (.not. lexist) then
             print *,filename
             print *,'THIS FILE DOES NOT EXIST'
             stop
           endif
-	  print *,'Now reading the file: '//filename
+    print *,'Now reading the file: '//filename
 
 
-	  call ftopen(unit,filename,readwrite,blocksize,status)
+    call ftopen(unit,filename,readwrite,blocksize,status)
 
           if (instrument == 'HMI' .and. dim1 > 7e4) &
            call FTMRHD(unit, 1, hdutype, status)
 
-	   naxes(1) = dim1
-	   naxes(2) = dime2
-	   naxes(3) = dim3
-	   nelements=naxes(1)*naxes(2)*naxes(3)
+     naxes(1) = dim1
+     naxes(2) = dime2
+     naxes(3) = dim3
+     nelements=naxes(1)*naxes(2)*naxes(3)
 !           print *,nelements
-	   group=1
-	   firstpix=1
-	   nullval=-999
+     group=1
+     firstpix=1
+     nullval=-999
 
-	   call ftgpvd(unit,group,firstpix,nelements,nullval, &
+     call ftgpvd(unit,group,firstpix,nelements,nullval, &
                         readarr,anynull,status)
 
-	   !readarr = temp
-	   
-!	   print *,minval(readarr),maxval(readarr)
-	  call ftclos(unit, status)
-	  call ftfiou(unit, status)
+     !readarr = temp
+     
+!    print *,minval(readarr),maxval(readarr)
+    call ftclos(unit, status)
+    call ftfiou(unit, status)
 
 
-	  end SUBROUTINE readfits
+    end SUBROUTINE readfits
 
 
 
