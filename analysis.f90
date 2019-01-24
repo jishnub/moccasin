@@ -20,7 +20,7 @@
    opts(6) = option_s( "nyears", .true.,  'f')
    opts(7) = option_s( "help", .false.,  'h')
    opts(8) = option_s( "instrument", .true.,  'i')
-   opts(9) = option_s( "artificial_data", .false.,  'j')
+   opts(9) = option_s( "artificial_data", .true.,  'j')
 
     compute_norms = .false.
     flow_analysis = .true.
@@ -29,6 +29,7 @@
     ellp = -1
     nyears = -1
     instrument = 'FFF'
+    nmodels = 1
 
     do
         select case( getopt( "abcdefhij:", opts ) ) ! opts is optional (for longopts only)
@@ -59,7 +60,7 @@
                 !if (optarg == 'HMI' .or. optarg == 'MDI') instrument = optarg
                 !if (optarg == 'mdi' .or. optarg == 'hmi') instrument = upper(optarg)
             case( 'j' )
-                
+                read(optarg,*) nmodels
         end select
     end do
     if (nyears < 0 .or. ell < 0 .or. ellp < 0 .or. yearnum < 0 &
@@ -92,7 +93,7 @@
 !  ellp = ell
 ! yearnum =  1
 !nyears = 1
-
+ call basic_setup
  call analyzethis(nmodels, nyears, yearnum) 
  call cpu_time(tfin)
 

@@ -8,8 +8,6 @@ MODULE DATA_ANALYSIS
  real*8 dnu!, rotEarth
  !parameter(rotEarth = 0.0317)!\mu Hz
  real*8, allocatable, dimension(:,:), target :: nu
- real*8, allocatable, dimension(:,:,:) :: rleaks2, horleaks2
- real*8, allocatable, dimension(:,:,:) :: rleaks1, horleaks1
  real*8 freqnorm, rhonorm, speednorm !pi, rsun, msun, Gcon, 
  !parameter (pi = acos(-1.0d0), Gcon = 6.678e-8)
 
@@ -20,13 +18,13 @@ MODULE DATA_ANALYSIS
  end type  
  
  type(Cell), allocatable, dimension(:,:) :: b_coefs
-! type(Cell), allocatable, dimension(:,:) :: corr, den
 
  type :: wigcell
-  real*8, allocatable, dimension(:,:) :: sub3j
+  real*8, allocatable, dimension(:) :: sub3j,em
  end type  
  
- type(wigcell) :: wig(smin:smax)
+ type(wigcell) :: wig(smin:smax,lmin:lmax)
+ type(wigcell), allocatable, dimension(:,:,:) :: horleaks, rleaks
 
  type :: Cell2
   real*8, allocatable, dimension(:) :: tee, em
@@ -55,7 +53,7 @@ MODULE DATA_ANALYSIS
   amps(lmin:lmax), fwhm(lmin:lmax), backg(lmin:lmax), leakage(0:304)
 
 
- logical existence(lmin:lmax,0:24)
+ logical existence(lmin:lmax,0:30)
 
  integer,allocatable, dimension(:,:) :: mapfwd
 !parameter (pi = acos(-1.0d0), Gcon = 6.678e-8)
@@ -89,7 +87,7 @@ subroutine basic_setup!(compute_wigner)
 
    ordmax = 30
    ordmin = 0
-   open(99, file='/home/shravan/QDP/egvt.sfopal5h5', form='unformatted', status='old')
+   open(99, file='/scratch/jb6888/QDP/egvt.sfopal5h5', form='unformatted', status='old')
    read(99)
    read(99) arr
    close(99)
@@ -237,10 +235,10 @@ subroutine construct_frequencies(inpfile,ynum)
   i = getcwd(workdir)
    write(yc,'(I2.2)') nint((ynum-1)*5)+1
 !  endif
-   inquire(file=trim(adjustl(workdir))//'/lengs_'//ellc//'_'//ellpc//'_'//yc, exist=lexist)
-   if (lexist) call system('rm '//trim(workdir)//'/lengs_'//ellc//'_'//ellpc)
+   inquire(file=trim(adjustl(workdir))//'/lengs_'//yc, exist=lexist)
+   if (lexist) call system('rm '//trim(workdir)//'/lengs_'//yc)
 
-  call system("awk '{ print NF }' "//inpfile//" > "//trim(workdir)//"/lengs_"//ellc//"_"//ellpc//'_'//yc)
+  call system("awk '{ print NF }' "//inpfile//" > "//trim(workdir)//"/lengs_"//yc)
 
   open(52,file=trim(workdir)//'/lengs_'//yc,&
            status='old',position='rewind',action='read')
@@ -380,7 +378,7 @@ subroutine analyzethis (nmodels, nyears, yearnum)
  character*2 ynum, ynum2, nch, nch_p
 ! character*1 omin, omax
 
- real*8 om_max, om_min, dom, yearnum, nyears, omega0, atemp(1:smax)
+ real*8 om_max, om_min, nu_max,nu_min, dom, yearnum, nyears, omega0, atemp(1:smax)
  real*8 mix1(lmin:lmax,0:30), nj1(lmin:lmax, 0:30), norms(lmin:lmax, 0:30)
 
  parameter(delm = 15, dell = 6, nreals = 10, omega0 = 0.440*2*pi)
@@ -388,12 +386,12 @@ subroutine analyzethis (nmodels, nyears, yearnum)
  !real*8 hilim_empt, lolim_empt, lolim_emp, hilim_emp
  real *8 omega(nt) ,dnu, contwopi, sig, nulmn, nulmnt, gamnl, consp,nj2(-6:6)
  real*8 nus_m, nus_mp, tstart, tfin, test(-1:1), con,noisevar2(nreals)
- real*8  den(smin:smax), conr, fmode, compar, ref, temp1
+ real*8  den(smin:smax), conr, fmode, compar, ref, temp1, leaks
  real*8 noisehalf(1:15000),noiseother(1:15000),noisevar1(nreals,smin:smax)
  complex*16, dimension(1:15000,1:nreals) :: temphalf, tempother
  real*8, dimension(1:40000) :: vec
  real*8, dimension(:), allocatable :: tempm,oms,omegas
- real*8, allocatable, dimension(:,:) :: leaks1, leaks2, tempr, leaksp
+ real*8, allocatable, dimension(:,:) :: tempr, leaksp
  real*8, allocatable, dimension(:,:,:) :: abspow1, abspow2, powspec, w, a
  real*8 r(nr)
  real*8, pointer, dimension(:) :: arr
@@ -405,9 +403,10 @@ subroutine analyzethis (nmodels, nyears, yearnum)
  character*80 prefix, workdir, freqdir
  integer sst
 
- call compute_wig3j_data_analysis(ell, ellp)
- call read_leakage(6,15,ell,ellp)
-
+ call read_leakage(6,15)
+ print *,'Finished reading in leakage'
+ call compute_wig3j_data_analysis
+  print *,'Finished computing Wigner-3j symbols'
  i = 42
  CALL zigset( i )
 
@@ -438,11 +437,12 @@ subroutine analyzethis (nmodels, nyears, yearnum)
   lowinst = Lower(instrument)
   ! FIX THE FREQUENCY DIRECTORY
   call construct_frequencies (adjustl(trim(freqdir))//'/'//lowinst//'.'//daynum//'.36',yearnum)
-
+  print *,'Constructed frequencies'
    norms = 0.d0
 
   ! FIX THE NORMS DIRECTORY
    do ell = lmin,lmax
+   print *,ell
     write(lchtemp,'(I3.3)') ell
     inquire(file=adjustl(trim(prefix))//'/norms/'//&
              lchtemp//'_year_'//ynum//'_'//ynum2,exist=lexist)
@@ -459,17 +459,22 @@ subroutine analyzethis (nmodels, nyears, yearnum)
      enddo
      close(1555)
     endif
-
+    ordmin = lbound(freqnu(ell)%ords,1)
+    ordmax = ubound(freqnu(ell)%ords,1)
     fmode = 278.6/696.d0  * 1e6 * (ell+0.5) /(4.*pi*2)
-    mix1(ell,:) = fmode/freqnu(eldp)%ords(:)**2
-    nj1(ell,:) = norms(ell,:) * fwhm(eldp)%ords(:) * (amps(ell)%ords(:) *  & !
+    mix1(ell,ordmin:ordmax) = fmode/freqnu(ell)%ords(ordmin:ordmax)**2
+    nj1(ell,ordmin:ordmax) = norms(ell,ordmin:ordmax) * fwhm(ell)%ords(:) * (amps(ell)%ords(:) *  & !
     freqnu(ell)%ords(:)) **2 * (2*pi)**3 * 1e-18
    enddo
 
 ns = (smax-1)/2 + 1
 allocate(w(nr,ns,nmodels))
 call readfits('radius.fits',r,nr,1,1)
-call readfits('wmodels.fits',w,nr,ns,nmodels)
+! call readfits('wmodels.fits',w,nr,ns,nmodels)
+w = 0
+do k=1,nmodels
+  w(:,1,k) = 440E-3 * r
+enddo
 
 dr(1:nr-1) = r(2:nr)-r(1:nr-1)
 dr(nr) = dr(nr-1)
@@ -487,12 +492,14 @@ close(455)
 leng = leng-1
 
 open(455, file='modeln', status='old', action='read')
- read(455,*) om_min, om_max
+ read(455,*) nu_min, nu_max
+ om_min = nu_min * 2*pi
+ om_max = nu_max * 2*pi
  noms = floor((om_max-om_min)/dom)+1
- allocate(powspec(noms, nmodels,leng),oms(noms),a(ns,nmodels, leng))
+ allocate(powspec(noms, nmodels,leng),oms(noms),a(ns,nmodels,leng))
  powspec = 0.0
  oms = (/(i*dom, i=0,noms-1)/) + om_min
-
+ 
  do k=1,leng
 
   read(455,*) ell0, ord
@@ -502,7 +509,7 @@ open(455, file='modeln', status='old', action='read')
     if (ell < lmin .or. ell > lmax) cycle
 
     allocate(omegas(-ell:ell))
-    leaks1 = rleaks1(-delm:delm,:,dl) + mix1(ell,ord) * horleaks1(-delm:delm,:,dl)
+    
     do nmod=1,nmodels
 
      omegas(:) = freqnu(ell)%ords(ord)*2*pi
@@ -519,10 +526,10 @@ open(455, file='modeln', status='old', action='read')
 
       !polc(:,k) = -(1-2.*modulo(ell,2))*rho*c2*sqrt(2*l/pi)*& 
        !  (r*deigU(:,ind) - l*(l+1)*eigV(:,ind) + 2* eigU(:,ind))*(r*deigU(:,indp) - l*(l+1)*eigV(:,indp) + 2* eigU(:,indp)) 
-      con = wig(s)%sub3j(0,1)*gamma(2.d0*ell-s+1)/gamma(2.d0*ell+s+2)*(ell**2+ell)*(2*ell+1)*((2*s+1)/(4*pi))**0.5
+      con = wig(s,ell)%sub3j(1)*gamma(2.d0*ell-s+1)/gamma(2.d0*ell+s+2)*(ell**2+ell)*(2*ell+1)*((2*s+1)/(4*pi))**0.5
 
       do m = -ell,ell
-       omegas(m) = atemp(s)*wig(s)%sub3j(0,m)*con + omegas(m)
+       omegas(m) = atemp(s)*wig(s,ell)%sub3j(m)*con + omegas(m)
       enddo
      enddo
 
@@ -530,7 +537,8 @@ open(455, file='modeln', status='old', action='read')
       mmin = max(-ell,m-delm)
       mmax = min(ell,m+delm)
       do mp = mmin,mmax
-       powspec(:,nmod,k) = abs(leaks1(mp-m,m)/(oms**2 - (omegas(mp) &
+       leaks = rleaks(mp-m,dl,ell0)%em(m) + mix1(ell,ord) * horleaks(mp-m,dl,ell0)%em(m)
+       powspec(:,nmod,k) = abs(leaks/(oms**2 - (omegas(mp) &
            + (0.0,0.5)*fwhm(ell)%ords(ord))**2.0))**2*nj1(ell, ord)+ powspec(:,nmod,k)
       enddo
      enddo
@@ -959,36 +967,33 @@ END FUNCTION SHTDAT
 !================================================================================
 
 
-SUBROUTINE compute_wig3j_data_analysis(ell, ellp)
+SUBROUTINE compute_wig3j_data_analysis
 
  implicit none
- integer ell, ellp, tmin, tmax, es, em, t, slow, shigh, IER
- real*8 temv(1:(ell+ ellp+ 1)),lmi, lma, con
+ integer ell, tmin, tmax, es, em, t, slow, shigh, IER
+ real*8 temv(1:2*lmax+1),lmi, lma, con
 
    temv = 0.d0
+  do ell = lmin,lmax
    do es = smin, smax
-    allocate(wig(es)%sub3j(-es:es,-ell:ell))
-    wig(es)%sub3j(-es:es,-ell:ell) = 0.d0
+    allocate(wig(es,ell)%sub3j(-ell:ell))
+    wig(es,ell)%sub3j(-ell:ell) = 0.d0
    enddo
 
    do em = -ell, ell
-    tmin = max(-smax,-ellp-em) !-em - t <= l'
-    tmax = min(smax,-em + ellp) ! -em - t >= -l'
-    do t = tmin, tmax
 
-     call drc3jj(dble(ell),dble(ellp),dble(em),dble(-em-t),lmi,lma,temv,lmax+lmax+1,IER) 
+     call drc3jj(dble(ell),dble(ell),dble(em),dble(-em),lmi,lma,temv,lmax+lmax+1,IER) 
 
-     slow = max(int(lmi),smin,abs(t))
+     slow = max(int(lmi),smin,0)
      shigh = min(int(lma),smax)
-     con = 1.d0 - 2.d0*modulo(em+t,2)
+     con = 1.d0 - 2.d0*modulo(em,2)
      do es = slow, shigh
-      wig(es)%sub3j(t,em) = temv(es-int(lmi) + 1) *  con
+      wig(es,ell)%sub3j(em) = temv(es-int(lmi) + 1) *  con
      enddo
      temv = 0.d0
        
-    enddo
    enddo
-
+  enddo
 
 
 END SUBROUTINE compute_wig3j_data_analysis
@@ -1996,9 +2001,9 @@ FUNCTION D1MACH (I)
 end function D1MACH
 
 !================================================================================================
-subroutine read_leakage(dl,dm, ell, ellp)
+subroutine read_leakage(dl,dm)
   implicit none
-  integer dm, dl, dl_mat,dm_mat, ind, ind0, i, j, l, lp, m, mp, ell, ii, ellp
+  integer dm, dl, dl_mat,dm_mat, ind, ind0, i, j, l, lp, m, mp
   real*8 L_rr,L_ii
   ! integer dm,dl
   !integer, allocatable, dimension(:) :: lp_mat,mp_mat
@@ -2043,34 +2048,25 @@ subroutine read_leakage(dl,dm, ell, ellp)
    allocate(cr_mat(2*dm_mat+1,2*dl_mat+1,ind),ci_mat(2*dm_mat+1,2*dl_mat+1,ind), &
          hr_mat(2*dm_mat+1,2*dl_mat+1,ind),hi_mat(2*dm_mat+1,2*dl_mat+1,ind))
 
-   call readfits('/home/shravan/QDP/leakvw0/default/vradsum/leakrlist.vradsum.fits',cr_mat,&
+   call readfits('/scratch/jb6888/QDP/leakvw0/default/vradsum/leakrlist.vradsum.fits',cr_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
-   call readfits('/home/shravan/QDP/leakvw0/default/vradsum/leakilist.vradsum.fits',ci_mat,&
+   call readfits('/scratch/jb6888/QDP/leakvw0/default/vradsum/leakilist.vradsum.fits',ci_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
 
-   call readfits('/home/shravan/QDP/leakvw0/default/vhorsum/leakrlist.vhorsum.fits',hr_mat,&
+   call readfits('/scratch/jb6888/QDP/leakvw0/default/vhorsum/leakrlist.vhorsum.fits',hr_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
-   call readfits('/home/shravan/QDP/leakvw0/default/vhorsum/leakilist.vhorsum.fits',hi_mat,&
+   call readfits('/scratch/jb6888/QDP/leakvw0/default/vhorsum/leakilist.vhorsum.fits',hi_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
 
    
-   allocate(rleaks1(-dm:dm,-ell:ell,-dl:dl), horleaks1(-dm:dm,-ell:ell,-dl:dl),&
-      rleaks2(-dm:dm,-ellp:ellp,-dl:dl), horleaks2(-dm:dm,-ellp:ellp,-dl:dl))
-   rleaks1 = 0.d0
-   horleaks1 = 0.d0
-
-   rleaks2 = 0.d0
-   horleaks2 = 0.d0
-
-   do ii = 1,2!lmin, lmax
-    if(ii==1) lp=ell
-    if(ii==2) lp=ellp
+   allocate(rleaks(-dm:dm,-dl:dl,lmin:lmax), horleaks(-dm:dm,-dl:dl,lmin:lmax))
+   do lp = lmin, lmax
     ind0 = lp*(lp+1)/2
-!    do j = -dl, dl
-!     do i = -dm, dm
-!      allocate(rleaks(i,j,lp)%em(-lp:lp),horleaks(i,j,lp)%em(-lp:lp))
-!     enddo
-!    enddo
+    do j = -dl, dl
+     do i = -dm, dm
+      allocate(rleaks(i,j,lp)%em(-lp:lp),horleaks(i,j,lp)%em(-lp:lp))
+     enddo
+    enddo
 
     do mp = 0, lp
      ind = ind0 + mp + 1
@@ -2085,38 +2081,22 @@ subroutine read_leakage(dl,dm, ell, ellp)
        L_ii = 0.5*sign(1,m)*ci_mat(abs(m)-abs(mp)+dm_mat+1,l-lp+dl_mat+1,ind)
        L_rr = 0.5*cr_mat(abs(m)-abs(mp)+dm_mat+1,l-lp+dl_mat+1,ind)
 
-       !if(abs(L_rr*L_ii) > 1e-2) cycle
-
-       if (ii==1) then
-        rleaks1(i,mp,j) = L_rr + L_ii  
-        rleaks1(i,-mp,j) = L_rr + sign(1,mp)* L_ii
-       else
-        rleaks2(i,mp,j) = L_rr + L_ii  
-        rleaks2(i,-mp,j) = L_rr + sign(1,mp)* L_ii
-       endif
+       rleaks(i,j,lp)%em(mp) = L_rr + L_ii  
+       rleaks(i,j,lp)%em(-mp) = L_rr + sign(1,mp)* L_ii
 
        L_ii = 0.5*sign(1,m)*hi_mat(abs(m)-abs(mp)+dm_mat+1,l-lp+dl_mat+1,ind)
        L_rr = 0.5*hr_mat(abs(m)-abs(mp)+dm_mat+1,l-lp+dl_mat+1,ind)
 
-       if (ii==1) then
-        horleaks1(i,mp,j) = L_rr + L_ii  
-        horleaks1(i,-mp,j) = L_rr + sign(1,mp)* L_ii
-       else
-        horleaks2(i,mp,j) = L_rr + L_ii  
-        horleaks2(i,-mp,j) = L_rr + sign(1,mp)* L_ii
-       endif
+       horleaks(i,j,lp)%em(mp) = L_rr + L_ii  
+       horleaks(i,j,lp)%em(-mp) = L_rr + sign(1,mp)* L_ii
 
-!       if(abs(L_rr*L_ii) > 1e-2)   print *,rleaks(i,mp,j),horleaks(i,mp,j),m,mp,ell,lp,dm
-       !   rleaks(i,mp,j) = 0.d0 !
-       !   horleaks(i,mp,j) = 0.d0 ! print *,rleaks(i,mp,j),horleaks(i,mp,j),m,mp,ell,lp,dm
-       !endif
       enddo
      enddo
     enddo
    enddo
 
    deallocate(cr_mat,ci_mat,hr_mat,hi_mat)
-!stop
+
    !leak = (cr+ci)/2.d0
 
 !  else
@@ -2240,7 +2220,7 @@ subroutine BINARYREADER
 
  allocate(X(4,nr), vars(6,nr))
 
- open(99, file='/home/shravan/QDP/sfopal5h5', form='unformatted', status='old')
+ open(99, file='/scratch/jb6888/QDP/sfopal5h5', form='unformatted', status='old')
  read(99)
  read(99) arr2
 
@@ -2266,7 +2246,7 @@ subroutine BINARYREADER
  rho = rho(nr:1:-1)
  c2 = c2(nr:1:-1)
 
- open(99, file='/home/shravan/QDP/egvt.sfopal5h5', form='unformatted', status='old')
+ open(99, file='/scratch/jb6888/QDP/egvt.sfopal5h5', form='unformatted', status='old')
  read(99)
  read(99) arr
 
@@ -2338,6 +2318,8 @@ END subroutine BINARYREADER
 	  call ftpprd(unit1,group,fpixel,nelements,temp,status1)
 	  call ftclos(unit1, status1)
 	  call ftfiou(unit1, status1)
+
+          !if (status1 .gt. 0) call printerror(status1)
 
 
 	 end SUBROUTINE writefits

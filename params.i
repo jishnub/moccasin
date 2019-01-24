@@ -10,8 +10,8 @@ parameter(rotEarth = 0.0317, trackrate = 0.430)!\mu Hz
 real*8 pi, rsun, msun, Gcon
 parameter (pi = acos(-1.0d0), Gcon = 6.678e-8)
 character*3 instrument
-parameter ( smin = 1, smax = 7, lmin = 1, lmax = 255)
-parameter (nsplits = 36)
+parameter ( smin = 1, smax = 1, lmin = 1, lmax = 255)
+parameter (nsplits = 36)!, nr = 7305)
 parameter (hmidir = '/scratch/jb6888/HMI')
 parameter (mdidir = '/scratch/jb6888/MDI')
 parameter (outhmidir = '/scratch/jb6888/HMIout')
