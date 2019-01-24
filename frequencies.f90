@@ -122,7 +122,7 @@ subroutine construct_frequencies(inpfile,ll,llp,ynum)
    write(ellc,'(I3.3)') ll
    write(ellpc,'(I3.3)') llp
    write(yc,'(I2.2)') ynum
-!  endif
+
    inquire(file=trim(adjustl(workdir))//'/lengs_'//ellc//'_'//ellpc//'_'//yc, exist=lexist)
    if (lexist) call system('rm '//trim(workdir)//'/lengs_'//ellc//'_'//ellpc)
 
@@ -257,17 +257,9 @@ subroutine construct_frequencies(inpfile,ll,llp,ynum)
 
     enddo
     deallocate(adata)
+
    enddo
 
-!  enddo
-  
-!  open(132,file='frequencies.comparison',action='write',position='rewind',status='replace')
-!  do i=-120,120
-!   write(132,*) nus(120)%mn(i,:)
-!  enddo
-!  close(132)
-!  print *,en(120)%ords
-! stop
  
   deallocate(acoefs, ensall, freqs, amplitudes, fwhmall, backgall, Po)
 end subroutine construct_frequencies
