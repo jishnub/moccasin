@@ -55,7 +55,7 @@ subroutine basic_setup!(compute_wigner)
    !sigmax = int(7.2*8.64*6)
    ordmax = 30
    ordmin = 0
-   open(99, file='/home/shravan/QDP/egvt.sfopal5h5', form='unformatted', status='old')
+   open(99, file='/scratch/jb6888/QDP/egvt.sfopal5h5', form='unformatted', status='old')
    read(99)
    read(99) arr
    close(99)
@@ -205,7 +205,7 @@ subroutine basic_setup!(compute_wigner)
 
  allocate(tempr(609,305),leakage(0:304))
 
- call readfits('/home/shravan/QDP/leaks.fits',tempr,609,305,1)
+ call readfits('/scratch/jb6888/QDP/leaks.fits',tempr,609,305,1)
  do ell = 0,304
   allocate(leakage(ell)%em(-ell:ell))
   leakage(ell)%em(-ell:ell) = tempr(1:2*ell+1,ell+1)
@@ -625,7 +625,7 @@ subroutine BINARYREADER
 
  allocate(X(4,nr), vars(6,nr))
 
- open(99, file='/home/shravan/QDP/sfopal5h5', form='unformatted', status='old')
+ open(99, file='/scratch/jb6888/QDP/sfopal5h5', form='unformatted', status='old')
  read(99)
  read(99) arr2
 
@@ -651,7 +651,7 @@ subroutine BINARYREADER
  rho = rho(nr:1:-1)
  c2 = c2(nr:1:-1)
 
- open(99, file='/home/shravan/QDP/egvt.sfopal5h5', form='unformatted', status='old')
+ open(99, file='/scratch/jb6888/QDP/egvt.sfopal5h5', form='unformatted', status='old')
  read(99)
  read(99) arr
 
@@ -1820,14 +1820,14 @@ subroutine read_leakage(dl,dm)
    allocate(cr_mat(2*dm_mat+1,2*dl_mat+1,ind),ci_mat(2*dm_mat+1,2*dl_mat+1,ind), &
          hr_mat(2*dm_mat+1,2*dl_mat+1,ind),hi_mat(2*dm_mat+1,2*dl_mat+1,ind))
 
-   call readfits('/home/shravan/QDP/leakvw0/default/vradsum/leakrlist.vradsum.fits',cr_mat,&
+   call readfits('/scratch/jb6888/QDP/leakvw0/default/vradsum/leakrlist.vradsum.fits',cr_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
-   call readfits('/home/shravan/QDP/leakvw0/default/vradsum/leakilist.vradsum.fits',ci_mat,&
+   call readfits('/scratch/jb6888/QDP/leakvw0/default/vradsum/leakilist.vradsum.fits',ci_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
 
-   call readfits('/home/shravan/QDP/leakvw0/default/vhorsum/leakrlist.vhorsum.fits',hr_mat,&
+   call readfits('/scratch/jb6888/QDP/leakvw0/default/vhorsum/leakrlist.vhorsum.fits',hr_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
-   call readfits('/home/shravan/QDP/leakvw0/default/vhorsum/leakilist.vhorsum.fits',hi_mat,&
+   call readfits('/scratch/jb6888/QDP/leakvw0/default/vhorsum/leakilist.vhorsum.fits',hi_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
 
    

@@ -959,15 +959,16 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
     inquire(file=trim(prefix)//'/norms/'//lch//'.tar',exist=lexist)
 
     if (lexist) then
-      tarcmd = "tar -uf "//trim(prefix)//'/norms/'//lch//".tar -C "//trim(prefix)//'/norms'//" "//&
-        lch//'_year_'//ynum//'_'//ynum2//" --remove-files"
-      print*,trim(tarcmd)
-      call system(trim(tarcmd))
+    !   tarcmd = "tar -uf "//trim(prefix)//'/norms/'//lch//".tar -C "//trim(prefix)//'/norms'//" "//&
+    !     lch//'_year_'//ynum//'_'//ynum2//" --remove-files"
+    !   print*,trim(tarcmd)
+    !   call system(trim(tarcmd))
+    !   ! call system("find "//trim(prefix)//'/norms/'//lch//'_year_'//ynum//'_'//ynum2)
     else
-      tarcmd = "tar -cf "//trim(prefix)//'/norms/'//lch//".tar -C "//trim(prefix)//'/norms'//" "//&
-        lch//'_year_'//ynum//'_'//ynum2//" --remove-files"
-      print*,trim(tarcmd)
-      call system(trim(tarcmd))
+    !   ! tarcmd = "tar -cf "//trim(prefix)//'/norms/'//lch//".tar -C "//trim(prefix)//'/norms'//" "//&
+    !   !   lch//'_year_'//ynum//'_'//ynum2//" --remove-files"
+    !   ! print*,trim(tarcmd)
+    !   ! call system(trim(tarcmd))
     endif
 
     call exit()
