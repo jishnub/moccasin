@@ -484,11 +484,15 @@ leng=0
 
 open(455, file='modeln', status='old', action='read')
   do  
-   read(455,*,IOSTAT=ierr) k,k,k,k
+   read(455,*,IOSTAT=ierr)
    if (ierr .ne.0) exit
    leng = leng + 1
    enddo
 close(455)
+if (leng == 0) then
+  print*,"modeln file is empty, please specificy the frequency range and modes to use"
+  call exit(1)
+endif
 leng = leng-1
 
 open(455, file='modeln', status='old', action='read')
@@ -2314,16 +2318,46 @@ END subroutine BINARYREADER
 	  group=1
 	  fpixel=1
 
+    print*,naxes
+
 	  call ftphpr(unit1,simple,bitpix,3,naxes,0,1,extend,status1)
+    if (status1 .gt. 0) call printerror(status1)
+
 	  call ftpprd(unit1,group,fpixel,nelements,temp,status1)
+    if (status1 .gt. 0) call printerror(status1)
+
 	  call ftclos(unit1, status1)
+    if (status1 .gt. 0) call printerror(status1)
+
 	  call ftfiou(unit1, status1)
 
-          !if (status1 .gt. 0) call printerror(status1)
+    if (status1 .gt. 0) call printerror(status1)
 
 
 	 end SUBROUTINE writefits
 !================================================================================
+
+subroutine printerror(status)
+
+!     Print out the FITSIO error messages to the user
+
+      integer status
+      character errtext*30,errmessage*80
+
+!     check if status is OK (no error); if so, simply return
+      if (status .le. 0) return
+
+!     get the text string which describes the error
+      call ftgerr(status,errtext)
+      print *,'FITSIO Error Status =',status,': ',errtext
+
+!     read and print out all the error messages on the FITSIO stack
+      call ftgmsg(errmessage)
+      do while (errmessage .ne. ' ')
+          print *,errmessage
+          call ftgmsg(errmessage)
+      end do
+end subroutine printerror
 
 
 END MODULE DATA_ANALYSIS
