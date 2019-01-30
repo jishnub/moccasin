@@ -69,6 +69,9 @@ MODULE DATA_ANALYSIS
 
   integer orders(lmin:lmax,2)
 
+  character*100 username
+  
+
 Contains
 !------------------------------------------------------------------------
 
@@ -85,9 +88,16 @@ subroutine basic_setup!(compute_wigner)
  real*8, dimension(:), allocatable :: tempa
  real*8, dimension(:,:), allocatable :: tempr
 
+ call getenv("USER",username)
+
+  ! hmidir = "/scratch/"//trim(username)//"/HMI"
+  ! mdidir = "/scratch/"//trim(username)//"/MDI"
+  ! outhmidir = "/scratch/"//trim(username)//"/HMIout"
+  ! outmdidir = "/scratch/"//trim(username)//"/MDIout"
+
    ordmax = 30
    ordmin = 0
-   open(99, file='/scratch/jb6888/QDP/egvt.sfopal5h5', form='unformatted', status='old')
+   open(99, file='/scratch/'//trim(username)//'/QDP/egvt.sfopal5h5', form='unformatted', status='old')
    read(99)
    read(99) arr
    close(99)
@@ -229,33 +239,32 @@ subroutine construct_frequencies(inpfile,ynum)
   real*8, allocatable, dimension(:,:) :: Po, splits, acoefs, adata
   integer, allocatable, dimension(:) :: indicesn
   logical lexist, mode_analysis
-  character*80 workdir
+  ! character*80 workdir
+  ! character*80 filename,username
   mode_analysis = .false.
 
-  i = getcwd(workdir)
-   write(yc,'(I2.2)') nint((ynum-1)*5)+1
-!  endif
-   inquire(file=trim(adjustl(workdir))//'/lengs_'//yc, exist=lexist)
-   if (lexist) call system('rm '//trim(workdir)//'/lengs_'//yc)
+  ! call getenv("USER",username)
+  !  write(yc,'(I2.2)') nint((ynum-1)*5)+1
+  ! !  endif
+  ! call system("mkdir -p /scratch/"//trim(username)//"/temp")
+  ! filename = '/scratch/'//trim(username)//'/temp/lengs_'//yc//'_modelno_'
+  !  inquire(file=filename, exist=lexist)
+  !  ! if (lexist) call system('rm '//trim(workdir)//'/lengs_'//yc)
 
-  call system("awk '{ print NF }' "//inpfile//" > "//trim(workdir)//"/lengs_"//yc)
+  ! if (.not. lexist) then
+  !   call system("head -1 "//inpfile//"|awk '{ print NF }' > "//filename)
+  !   call system("wc -l "//inpfile//"|awk '{print $1}' >> "//filename)
+  ! endif
 
-  open(52,file=trim(workdir)//'/lengs_'//yc,&
-           status='old',position='rewind',action='read')
-  read(52,*) nrecs
-  close(52)
+  ! open(52,file=filename,status='old',position='rewind',action='read')
+  ! read(52,*) nrecs
+  ! read(52,*) npoints
+  ! close(52)
 
+  ! inquire(file=trim(workdir)//'/lengs_'//yc, exist=lexist)
+  ! if (lexist) call system("rm "//trim(workdir)//"/lengs_"//yc)
 
-  call system("awk 'END {print NR}' "//inpfile//" > "//trim(workdir)//"/lengs_"//yc)
-
-  open(52,file=trim(workdir)//'/lengs_'//yc,&
-           status='old',position='rewind',action='read')
-  read(52,*) npoints
-  close(52)
-
-  inquire(file=trim(workdir)//'/lengs_'//yc, exist=lexist)
-  if (lexist) call system("rm "//trim(workdir)//"/lengs_"//yc)
-
+  call rows_cols_file(inpfile,npoints,nrecs)
   
   allocate(ells(npoints), ensall(npoints), freqs(npoints),amplitudes(npoints),&
         fwhmall(npoints), backgall(npoints), splits(nrecs,npoints), &
@@ -358,42 +367,93 @@ end subroutine construct_frequencies
 
 !------------------------------------------------------------------------
 
+subroutine rows_cols_file(inpfile,nrows,ncols)
+  implicit none
+  character*(*), intent(in) :: inpfile
+  integer, intent(out) :: nrows,ncols
+  integer ios,pos,i
+  character(len=10000) buffer
+  character(:), allocatable :: line
+  character(len=2) whitespace
 
-subroutine analyzethis (nmodels, nyears, yearnum)
+  whitespace = ' '//achar(9) ! space or tab
+
+  nrows = 0
+  ncols = 0
+
+  open (10, file=inpfile)
+  Do
+    read (10,*,iostat=ios)
+    if (ios/=0) exit
+    nrows=nrows+1
+  End Do
+  close(10)
+
+  open (10, file=inpfile)
+  read(10,'(A)') buffer
+  close(10)
+
+  line = trim(buffer)
+
+  pos = 1
+  do
+    i=verify(line(pos:), whitespace)
+
+    if (i == 0) exit
+    ncols = ncols + 1
+
+    pos = pos + i - 1
+
+    i = scan(line(pos:), whitespace)
+
+    if (i == 0) exit
+    pos = pos + i - 1
+
+  enddo
+  
+end subroutine rows_cols_file
+
+!------------------------------------------------------------------------
+
+
+
+
+subroutine analyzethis (nmodels,modelno, nyears, yearnum)
 
  Use Ziggurat
  implicit none
 
  integer order, ell, slow, s, m, mp, maxoff, offseti, eltp, i, ii,ell0,ord
  integer indm, indmp, indm_nu, indmp_nu, ind_nu, t, minoff,  sigind, seed, ind
- integer ordlow, ordhigh,sigoff, siglow, sighigh, ellp, ellt, nmod,nmodels
+ integer ordlow, ordhigh,sigoff, siglow, sighigh, ellp, ellt, modelno, nmodels
  integer emp, emdp, mmin, mmax, signemp, signempt, shif, dl, dm, dmp, ns, indw
  integer minoffp, maxoffp, eldp, delm, dell,lolim,hilim,refind,indst, np_ord
- integer delmmin, delmmax, basel(1:2), nsig, deltast, daystart, n_ord, leng
+ integer delmmin, delmmax, basel(1:2), nsig, deltast, daystart, n_ord, number_of_ln_pairs
  integer intarr(1:15000), j,k, ierr, emdpmin, emdpmax, reals, nreals, noms
  integer, allocatable, dimension(:) :: minoffarr, maxoffarr, seeds
+ integer, allocatable, dimension(:,:) :: modes
 
  character*4 daynum
- character*3 lch, lch_p, trackch, lchtemp, lowinst
+ character*3 lch, lch_p, trackch, lchtemp, lowinst, modelnoch
  character*2 ynum, ynum2, nch, nch_p
 ! character*1 omin, omax
 
- real*8 om_max, om_min, nu_max,nu_min, dom, yearnum, nyears, omega0, atemp(1:smax)
- real*8 mix1(lmin:lmax,0:30), nj1(lmin:lmax, 0:30), norms(lmin:lmax, 0:30)
-
- parameter(delm = 15, dell = 6, nreals = 10, omega0 = 0.440*2*pi)
+ real*8 om_max, om_min, nu_max,nu_min, dom, yearnum, nyears, omegas(-lmax:lmax)
+ real*8 mix(lmin:lmax,0:30), nj(lmin:lmax, 0:30), norms(lmin:lmax, 0:30)
+ real*8 atemp(smin:smax), conell
+ parameter(delm = 15, dell = 6, nreals = 10)
  real*8 hilim_mp, lolim_mp, lolim_m, hilim_m, gamnlp, cons, con0, defcon,samprate
  !real*8 hilim_empt, lolim_empt, lolim_emp, hilim_emp
  real *8 omega(nt) ,dnu, contwopi, sig, nulmn, nulmnt, gamnl, consp,nj2(-6:6)
  real*8 nus_m, nus_mp, tstart, tfin, test(-1:1), con,noisevar2(nreals)
- real*8  den(smin:smax), conr, fmode, compar, ref, temp1, leaks
+ real*8  den(smin:smax), conr, fmode, compar, ref, temp1, leaks, leakdiag
  real*8 noisehalf(1:15000),noiseother(1:15000),noisevar1(nreals,smin:smax)
- complex*16, dimension(1:15000,1:nreals) :: temphalf, tempother
+ complex*16, dimension(1:15000,1:nreals) :: temphalf, tempotheranalyzethis
  real*8, dimension(1:40000) :: vec
- real*8, dimension(:), allocatable :: tempm,oms,omegas
- real*8, allocatable, dimension(:,:) :: tempr, leaksp
- real*8, allocatable, dimension(:,:,:) :: abspow1, abspow2, powspec, w, a
- real*8 r(nr)
+ real*8, dimension(:), allocatable :: tempm,oms
+ real*8, allocatable, dimension(:,:) :: tempr, leaksp, a
+ real*8, allocatable, dimension(:,:,:) :: abspow1, abspow2, w ,powspec
+ real*8 r(nr),term
  real*8, pointer, dimension(:) :: arr
  complex*16 conp
  complex*16, dimension(:,:,:), allocatable :: limitpow1, limitpow2
@@ -402,6 +462,13 @@ subroutine analyzethis (nmodels, nyears, yearnum)
  logical restart
  character*80 prefix, workdir, freqdir
  integer sst
+
+ call getenv("USER",username)
+
+  ! hmidir = "/scratch/"//trim(username)//"/HMI"
+  ! mdidir = "/scratch/"//trim(username)//"/MDI"
+  ! outhmidir = "/scratch/"//trim(username)//"/HMIout"
+  ! outmdidir = "/scratch/"//trim(username)//"/MDIout"
 
  call read_leakage(6,15)
  print *,'Finished reading in leakage'
@@ -435,21 +502,19 @@ subroutine analyzethis (nmodels, nyears, yearnum)
   t = daystart + (yearnum -1)*360
   write(daynum, '(I4.4)') t
   lowinst = Lower(instrument)
-  ! FIX THE FREQUENCY DIRECTORY
+  
   call construct_frequencies (adjustl(trim(freqdir))//'/'//lowinst//'.'//daynum//'.36',yearnum)
   print *,'Constructed frequencies'
-   norms = 0.d0
+  norms = 0.d0
 
-  ! FIX THE NORMS DIRECTORY
    do ell = lmin,lmax
-   print *,ell
     write(lchtemp,'(I3.3)') ell
-    inquire(file=adjustl(trim(prefix))//'/norms/'//&
-             lchtemp//'_year_'//ynum//'_'//ynum2,exist=lexist)
 
+    inquire(file=adjustl(trim(prefix))//'/norms/'//lchtemp//&
+             '_year_'//ynum//'_'//ynum2,exist=lexist)
     if (lexist) then
-       open(1555,file=adjustl(trim(prefix))//'/norms/'//&
-             lchtemp//'_year_'//ynum//'_'//ynum2,status='old',action='read')
+       open(1555,file=adjustl(trim(prefix))//'/norms/'//lchtemp//&
+             '_year_'//ynum//'_'//ynum2,status='old',action='read')
 
      do  
       read(1555,*,IOSTAT=ierr) con0, order
@@ -458,101 +523,128 @@ subroutine analyzethis (nmodels, nyears, yearnum)
        norms(ell,order) = con0
      enddo
      close(1555)
+    else
+      print*,"Could not load norm file for l=",lchtemp
     endif
     ordmin = lbound(freqnu(ell)%ords,1)
     ordmax = ubound(freqnu(ell)%ords,1)
     fmode = 278.6/696.d0  * 1e6 * (ell+0.5) /(4.*pi*2)
-    mix1(ell,ordmin:ordmax) = fmode/freqnu(ell)%ords(ordmin:ordmax)**2
-    nj1(ell,ordmin:ordmax) = norms(ell,ordmin:ordmax) * fwhm(ell)%ords(:) * (amps(ell)%ords(:) *  & !
+    mix(ell,ordmin:ordmax) = fmode/freqnu(ell)%ords(ordmin:ordmax)**2
+    nj(ell,ordmin:ordmax) = norms(ell,ordmin:ordmax) * fwhm(ell)%ords(:) * (amps(ell)%ords(:) *  & !
     freqnu(ell)%ords(:)) **2 * (2*pi)**3 * 1e-18
    enddo
 
 ns = (smax-1)/2 + 1
 allocate(w(nr,ns,nmodels))
 call readfits('radius.fits',r,nr,1,1)
-! call readfits('wmodels.fits',w,nr,ns,nmodels)
-w = 0
+call readfits('wmodels.fits',w,nr,ns,nmodels)
+
 do k=1,nmodels
-  w(:,1,k) = 440E-3 * r
+  do s=1,ns
+    w(:,s,k) = w(:,s,k)*2*pi*r
+  enddo
 enddo
 
 dr(1:nr-1) = r(2:nr)-r(1:nr-1)
 dr(nr) = dr(nr-1)
 
 
-leng=0
+number_of_ln_pairs=0
 
+call system("sed -i '/^$/d' modeln") ! remove empty lines from the file before the length is measured
 open(455, file='modeln', status='old', action='read')
   do  
    read(455,*,IOSTAT=ierr)
    if (ierr .ne.0) exit
-   leng = leng + 1
+   number_of_ln_pairs = number_of_ln_pairs + 1
    enddo
 close(455)
-if (leng == 0) then
+if (number_of_ln_pairs == 0) then
   print*,"modeln file is empty, please specificy the frequency range and modes to use"
   call exit(1)
 endif
-leng = leng-1
+number_of_ln_pairs = number_of_ln_pairs-1
 
 open(455, file='modeln', status='old', action='read')
- read(455,*) nu_min, nu_max
- om_min = nu_min * 2*pi
- om_max = nu_max * 2*pi
- noms = floor((om_max-om_min)/dom)+1
- allocate(powspec(noms, nmodels,leng),oms(noms),a(ns,nmodels,leng))
- powspec = 0.0
- oms = (/(i*dom, i=0,noms-1)/) + om_min
+read(455,*) nu_min, nu_max
+om_min = nu_min * 2*pi
+om_max = nu_max * 2*pi
+noms = floor((om_max-om_min)/dom)+1
+allocate(powspec(noms,number_of_ln_pairs,2),oms(noms),a(ns,number_of_ln_pairs))
+allocate(modes(number_of_ln_pairs,2))
+a=0.d0
+
+powspec = 0.0
+oms = (/(i*dom, i=0,noms-1)/) + om_min
+do k=1,number_of_ln_pairs
+ read(455,*) ell0, ord
+ modes(k,1) = ell0 
+ modes(k,2) = ord
+enddo
+close(455)
+
  
- do k=1,leng
-
-  read(455,*) ell0, ord
-
+  do k=1,number_of_ln_pairs
+   ell0 = modes(k,1)
+   ord = modes(k,2)
    do dl = -dell,dell
     ell = ell0 + dl
     if (ell < lmin .or. ell > lmax) cycle
-
-    allocate(omegas(-ell:ell))
-    
-    do nmod=1,nmodels
-
-     omegas(:) = freqnu(ell)%ords(ord)*2*pi
-     indw = 0
-     atemp = 0.d0
-     do s = 1, smax, 2
-      ind = mapfwd(ell,ord)
-      indw =indw+1
-      atemp(s) = sum((eigU(:,ind)**2-(2*eigU(:,ind)*eigV(:,ind)-0.5*s*(s+1)*eigV(:,ind)**2)+&
-                                                   ell*(ell+1)*eigV(:,ind)**2)*rho*r*dr*w(:,indw,nmod))/&
-            sum(rho*r**2*dr*(eigU(:,ind)**2 + ell*(ell+1)*eigV(:,ind)**2)) + rotEarth
-
-      if (dl ==0) a(indw,nmod, k) = atemp(indw)
+    omegas(-ell:ell) = freqnu(ell)%ords(ord)*2*pi
+    conell = ell*(ell+1)
+    indw = 0
+    ind = mapfwd(ell,ord)
+    atemp = 0.d0
+    do s = 1, smax, 2
+     indw =indw+1
+     atemp(s) = sum((eigU(:,ind)**2-(2*eigU(:,ind)*eigV(:,ind)+0.5*s*(s+1)*eigV(:,ind)**2)+&
+               conell*eigV(:,ind)**2)*rho*r*dr*w(:,indw,modelno)) 
+     if (atemp(s) >0) atemp(s) = atemp(s)  + rotEarth*2*pi
+     if (dl ==0) a(indw, k) = atemp(s)
 
       !polc(:,k) = -(1-2.*modulo(ell,2))*rho*c2*sqrt(2*l/pi)*& 
        !  (r*deigU(:,ind) - l*(l+1)*eigV(:,ind) + 2* eigU(:,ind))*(r*deigU(:,indp) - l*(l+1)*eigV(:,indp) + 2* eigU(:,indp)) 
-      con = wig(s,ell)%sub3j(1)*gamma(2.d0*ell-s+1)/gamma(2.d0*ell+s+2)*(ell**2+ell)*(2*ell+1)*((2*s+1)/(4*pi))**0.5
-
-      do m = -ell,ell
-       omegas(m) = atemp(s)*wig(s,ell)%sub3j(m)*con + omegas(m)
-      enddo
+     con = wig(s,ell)%sub3j(1)*conell*(2*ell+1)*((2*s+1)/(4*pi))**0.5!*facrat(2*ell-s,2*ell+s+1)
+  ! A FACTOR OF 0.52?
+     do m = -ell,ell
+      omegas(m) = atemp(s)*wig(s,ell)%sub3j(m)*con + omegas(m)
      enddo
+    enddo ! s loop
 
-     do m = -ell0,ell0
-      mmin = max(-ell,m-delm)
-      mmax = min(ell,m+delm)
-      do mp = mmin,mmax
-       leaks = rleaks(mp-m,dl,ell0)%em(m) + mix1(ell,ord) * horleaks(mp-m,dl,ell0)%em(m)
-       powspec(:,nmod,k) = abs(leaks/(oms**2 - (omegas(mp) &
-           + (0.0,0.5)*fwhm(ell)%ords(ord))**2.0))**2*nj1(ell, ord)+ powspec(:,nmod,k)
-      enddo
+    do m = -ell0,ell0
+     mmin = max(-ell,m-delm)
+     mmax = min(ell,m+delm)
+     do mp = mmin,mmax
+      leaks = rleaks(mp-m,dl,ell0)%em(m) + mix(ell,ord) * horleaks(mp-m,dl,ell0)%em(m)
+
+      if ((ell==ell0) .and. (m==mp)) then 
+        leakdiag = 1
+      else
+        leakdiag = 0
+      endif
+      
+      powspec(:,k,0) = nj(ell, ord)*abs(leaks/(oms**2 - (omegas(mp) &
+        - (0.0,0.5)*fwhm(ell)%ords(ord)*2*pi)**2))**2+ powspec(:,k,0)
+      
+      powspec(:,k,1) = nj(ell, ord)*abs(leakdiag/(oms**2 - (omegas(mp) &
+        - (0.0,0.5)*fwhm(ell)%ords(ord)*2*pi)**2))**2+ powspec(:,k,0)      
+
+      
      enddo
-     deallocate(omegas)
-    enddo !-dell,dell
-  enddo !1,nmodels
- enddo !k = 1,leng
+    enddo
+    
+   enddo!-dell,dell
+  enddo!k = 1,number_of_ln_pairs 
 
- call writefits('power_spectra.fits',powspec,noms,nmodels,leng)
- call writefits('acoefs.fits',a,ns,nmodels, leng)
+ ! print *, count(powspec(:,1,1)/=0)
+
+ call system("mkdir -p "//trim(prefix)//"/power_spectra")
+ call system("mkdir -p "//trim(prefix)//"/acoeffs")
+
+ write(modelnoch,'(I3.3)') modelno
+
+ call writefits(trim(prefix)//'/power_spectra/model'//modelnoch//'.fits',powspec,noms,number_of_ln_pairs,1)
+ call writefits(trim(prefix)//'/acoeffs/model'//modelnoch//'.fits',a,ns, number_of_ln_pairs, 1)
 
 end subroutine analyzethis
 
@@ -784,19 +876,19 @@ END FUNCTION SHTDAT
           if (exists) call system('rm '//filename)
           print *,'Writing file '//filename
 
-	  status1 = 0
-	  call ftgiou(unit1,status1)
-	  blocksize=1
-!	 dump_array = dble(temp)
-	  call ftinit(unit1,trim(adjustl(filename)),blocksize,status1)
-	  simple=.true.
-	  bitpix=-64
+    status1 = 0
+    call ftgiou(unit1,status1)
+    blocksize=1
+!  dump_array = dble(temp)
+    call ftinit(unit1,trim(adjustl(filename)),blocksize,status1)
+    simple=.true.
+    bitpix=-64
           ns = (smax + 1)**2
-	  naxes(1)=ns
-	  !naxes(2)=ordmax - ordmin + 1
-!	  naxes(3)=ordmax - ordmin + 1
-	  naxes(2)=nsig
-	  naxes(3)=2
+    naxes(1)=ns
+    !naxes(2)=ordmax - ordmin + 1
+!   naxes(3)=ordmax - ordmin + 1
+    naxes(2)=nsig
+    naxes(3)=2
 
           allocate(temp(1:ns,1:nsig, 2))
           allocate(tempreal(1:ns,1:nsig))
@@ -821,15 +913,15 @@ END FUNCTION SHTDAT
  !           enddo
           enddo
 
-	  nelements=naxes(1)*naxes(2)*naxes(3)!*naxes(4)!*2
-	  extend=.false.
-	  group=1
-	  fpixel=1
+    nelements=naxes(1)*naxes(2)*naxes(3)!*naxes(4)!*2
+    extend=.false.
+    group=1
+    fpixel=1
 
-	  call ftphpr(unit1,simple,bitpix,3,naxes(1:3),0,1,extend,status1)
-	  call ftpprd(unit1,group,fpixel,nelements,temp,status1)
-	  call ftclos(unit1, status1)
-	  call ftfiou(unit1, status1)
+    call ftphpr(unit1,simple,bitpix,3,naxes(1:3),0,1,extend,status1)
+    call ftpprd(unit1,group,fpixel,nelements,temp,status1)
+    call ftclos(unit1, status1)
+    call ftfiou(unit1, status1)
 
          ! WRITING OUT SIGNAL
 
@@ -847,17 +939,17 @@ END FUNCTION SHTDAT
           if (exists) call system('rm '//filename)
           print *,'Writing file '//filename
 
-	  status1 = 0
-	  call ftgiou(unit1,status1)
-	  blocksize=1
-!	 dump_array = dble(temp)
-	  call ftinit(unit1,trim(adjustl(filename)),blocksize,status1)
-	  simple=.true.
-	  bitpix=-64
+    status1 = 0
+    call ftgiou(unit1,status1)
+    blocksize=1
+!  dump_array = dble(temp)
+    call ftinit(unit1,trim(adjustl(filename)),blocksize,status1)
+    simple=.true.
+    bitpix=-64
           ns = (smax + 1)**2
-	  naxes(1)=ns
-!	  naxes(3)=ordmax - ordmin + 1
-	  naxes(2)=nsig
+    naxes(1)=ns
+!   naxes(3)=ordmax - ordmin + 1
+    naxes(2)=nsig
 
           tempreal = 0.d0
           ind = 0
@@ -876,15 +968,15 @@ END FUNCTION SHTDAT
              enddo
           enddo
 
-	  nelements=naxes(1)*naxes(2)!*naxes(3)
-	  extend=.false.
-	  group=1
-	  fpixel=1
+    nelements=naxes(1)*naxes(2)!*naxes(3)
+    extend=.false.
+    group=1
+    fpixel=1
 
-	  call ftphpr(unit1,simple,bitpix,2,naxes(1:2),0,1,extend,status1)
-	  call ftpprd(unit1,group,fpixel,nelements,tempreal,status1)
-	  call ftclos(unit1, status1)
-	  call ftfiou(unit1, status1)
+    call ftphpr(unit1,simple,bitpix,2,naxes(1:2),0,1,extend,status1)
+    call ftpprd(unit1,group,fpixel,nelements,tempreal,status1)
+    call ftclos(unit1, status1)
+    call ftfiou(unit1, status1)
 
 
           if (compute_varnoise) then 
@@ -901,18 +993,18 @@ END FUNCTION SHTDAT
            if (exists) call system('rm '//filename)
            print *,'Writing file '//filename
 
-	   status1 = 0
-	   call ftgiou(unit1,status1)
-	   blocksize=1
-!	 dump_array = dble(temp)
-	   call ftinit(unit1,trim(adjustl(filename)),blocksize,status1)
-	   simple=.true.
-	   bitpix=-64
+     status1 = 0
+     call ftgiou(unit1,status1)
+     blocksize=1
+!  dump_array = dble(temp)
+     call ftinit(unit1,trim(adjustl(filename)),blocksize,status1)
+     simple=.true.
+     bitpix=-64
            ns = (smax + 1)**2
-	   naxes(1)=ns
-!	   naxes(2)=ordmax - ordmin + 1
-!	  naxes(3)=ordmax - ordmin + 1
-	   naxes(2)=nsig !sigmax!-sigmin+1
+     naxes(1)=ns
+!    naxes(2)=ordmax - ordmin + 1
+!   naxes(3)=ordmax - ordmin + 1
+     naxes(2)=nsig !sigmax!-sigmin+1
 
            tempreal = 0.d0
            ind = 0
@@ -928,15 +1020,15 @@ END FUNCTION SHTDAT
               enddo
            enddo
 
-	   nelements=naxes(1)*naxes(2)!*naxes(3)
-	   extend=.false.
-	   group=1
-	   fpixel=1
+     nelements=naxes(1)*naxes(2)!*naxes(3)
+     extend=.false.
+     group=1
+     fpixel=1
  
-	   call ftphpr(unit1,simple,bitpix,2,naxes(1:2),0,1,extend,status1)
-	   call ftpprd(unit1,group,fpixel,nelements,tempreal,status1)
-	   call ftclos(unit1, status1)
-	   call ftfiou(unit1, status1)
+     call ftphpr(unit1,simple,bitpix,2,naxes(1:2),0,1,extend,status1)
+     call ftpprd(unit1,group,fpixel,nelements,tempreal,status1)
+     call ftclos(unit1, status1)
+     call ftfiou(unit1, status1)
           
            deallocate(temp,tempreal)
           endif
@@ -966,7 +1058,7 @@ END FUNCTION SHTDAT
 !           write(102,*) dnu
            
 
-	 end SUBROUTINE writefits_bcoef_same
+   end SUBROUTINE writefits_bcoef_same
 
 !================================================================================
 
@@ -1005,55 +1097,62 @@ END SUBROUTINE compute_wig3j_data_analysis
 
 !================================================================================
 
-	 SUBROUTINE readfits(filename,readarr,dim1,dime2,dim3)
+   SUBROUTINE readfits(filename,readarr,dim1,dime2,dim3)
 
-	  implicit none
-	  integer status,unit,readwrite,blocksize,naxes(3)
-	  integer group,firstpix, dim3 ,dime2,dim1
-	  integer nelements, hdutype
-	  real*8 readarr(dim1,dime2,dim3)
-	  real*8 nullval!,temp(dim1,dime2,dim3)
-	  logical anynull, lexist
-	  character*(*) filename
+    implicit none
+    integer status,unit,readwrite,blocksize,naxes(3)
+    integer group,firstpix, dim3 ,dime2,dim1
+    integer nelements, hdutype
+    real*8 readarr(dim1,dime2,dim3)
+    real*8 nullval!,temp(dim1,dime2,dim3)
+    logical anynull, lexist
+    character*(*) filename
 
-	      
-	  status=0
-	  call ftgiou(unit,status)
-	  readwrite=0
+        
+    status=0
+    call ftgiou(unit,status)
+    if (status .gt. 0) call printerror(status)
+
+    readwrite=0
           inquire(file=filename, exist = lexist)
           if (.not. lexist) then
             print *,filename
             print *,'THIS FILE DOES NOT EXIST'
             stop
           endif
-	  print *,'Now reading the file: '//filename
+    print *,'Now reading the file: '//filename
 
 
-	  call ftopen(unit,filename,readwrite,blocksize,status)
+    call ftopen(unit,filename,readwrite,blocksize,status)
+    if (status .gt. 0) call printerror(status)
 
-          if (instrument == 'HMI' .and. dim1 > 7e4) &
-           call FTMRHD(unit, 1, hdutype, status)
+    if (instrument == 'HMI' .and. dim1 > 7e4) &
+    call FTMRHD(unit, 1, hdutype, status)
+           if (status .gt. 0) call printerror(status)
 
-	   naxes(1) = dim1
-	   naxes(2) = dime2
-	   naxes(3) = dim3
-	   nelements=naxes(1)*naxes(2)*naxes(3)
+     naxes(1) = dim1
+     naxes(2) = dime2
+     naxes(3) = dim3
+     nelements=naxes(1)*naxes(2)*naxes(3)
 !           print *,nelements
-	   group=1
-	   firstpix=1
-	   nullval=-999
+     group=1
+     firstpix=1
+     nullval=-999
 
-	   call ftgpvd(unit,group,firstpix,nelements,nullval, &
+     call ftgpvd(unit,group,firstpix,nelements,nullval, &
                         readarr,anynull,status)
+     if (status .gt. 0) call printerror(status)
 
-	   !readarr = temp
-	   
-!	   print *,minval(readarr),maxval(readarr)
-	  call ftclos(unit, status)
-	  call ftfiou(unit, status)
+     !readarr = temp
+     
+!    print *,minval(readarr),maxval(readarr)
+    call ftclos(unit, status)
+    if (status .gt. 0) call printerror(status)
+    call ftfiou(unit, status)
+    if (status .gt. 0) call printerror(status)
 
 
-	  end SUBROUTINE readfits
+    end SUBROUTINE readfits
 
 
 
@@ -1104,7 +1203,7 @@ subroutine DRC3JJ (L2, L3, M2, M3, L1MIN, L1MAX, THRCOF, NDIM, &
 !                 3j symbol for all allowed values of L1.  THRCOF(I)
 !                 will contain f(L1MIN+I-1), I=1,2,...,L1MAX+L1MIN+1.
 !
-!     NDIM :IN    Declared length of THRCOF in calling program.
+!     NDIM :IN    Declared number_of_ln_pairsth of THRCOF in calling program.
 !
 !     IER :OUT    Error flag.
 !                 IER=0 No errors.
@@ -2052,14 +2151,14 @@ subroutine read_leakage(dl,dm)
    allocate(cr_mat(2*dm_mat+1,2*dl_mat+1,ind),ci_mat(2*dm_mat+1,2*dl_mat+1,ind), &
          hr_mat(2*dm_mat+1,2*dl_mat+1,ind),hi_mat(2*dm_mat+1,2*dl_mat+1,ind))
 
-   call readfits('/scratch/jb6888/QDP/leakvw0/default/vradsum/leakrlist.vradsum.fits',cr_mat,&
+   call readfits('/scratch/'//trim(username)//'/QDP/leakvw0/default/vradsum/leakrlist.vradsum.fits',cr_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
-   call readfits('/scratch/jb6888/QDP/leakvw0/default/vradsum/leakilist.vradsum.fits',ci_mat,&
+   call readfits('/scratch/'//trim(username)//'/QDP/leakvw0/default/vradsum/leakilist.vradsum.fits',ci_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
 
-   call readfits('/scratch/jb6888/QDP/leakvw0/default/vhorsum/leakrlist.vhorsum.fits',hr_mat,&
+   call readfits('/scratch/'//trim(username)//'/QDP/leakvw0/default/vhorsum/leakrlist.vhorsum.fits',hr_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
-   call readfits('/scratch/jb6888/QDP/leakvw0/default/vhorsum/leakilist.vhorsum.fits',hi_mat,&
+   call readfits('/scratch/'//trim(username)//'/QDP/leakvw0/default/vhorsum/leakilist.vhorsum.fits',hi_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
 
    
@@ -2224,7 +2323,7 @@ subroutine BINARYREADER
 
  allocate(X(4,nr), vars(6,nr))
 
- open(99, file='/scratch/jb6888/QDP/sfopal5h5', form='unformatted', status='old')
+ open(99, file='/scratch/'//trim(username)//'/QDP/sfopal5h5', form='unformatted', status='old')
  read(99)
  read(99) arr2
 
@@ -2250,7 +2349,7 @@ subroutine BINARYREADER
  rho = rho(nr:1:-1)
  c2 = c2(nr:1:-1)
 
- open(99, file='/scratch/jb6888/QDP/egvt.sfopal5h5', form='unformatted', status='old')
+ open(99, file='/scratch/'//trim(username)//'/QDP/egvt.sfopal5h5', form='unformatted', status='old')
  read(99)
  read(99) arr
 
@@ -2294,48 +2393,64 @@ END subroutine BINARYREADER
         implicit none 
         integer blocksize,bitpix,naxes(3),unit1,nz , nx, ny
         integer status1,group,fpixel,flag, nelements
-	  real*8 temp(nx,ny,nz)
-!	  real*8 dump_array(nx,ny,nz)
-	  character*(*) filename
-	  logical simple,extend, exists
+    real*8 temp(nx,ny,nz)
+!   real*8 dump_array(nx,ny,nz)
+    character*(*) filename
+    logical simple,extend, exists
 
           inquire(file=filename, exist=exists)
           if (exists) call system('rm '//filename)
           print *,'Writing into file '//filename
 
-	  status1 = 0
-	  call ftgiou(unit1,status1)
-	  blocksize=1
-!	 dump_array = dble(temp)
-	  call ftinit(unit1,filename,blocksize,status1)
-	  simple=.true.
-	  bitpix=-64
-	  naxes(1)=nx
-	  naxes(2)=ny
-	  naxes(3)=nz
-	  nelements=naxes(1)*naxes(2)*naxes(3)
-	  extend=.false.
-	  group=1
-	  fpixel=1
+    status1 = 0
+    call ftgiou(unit1,status1)
+    blocksize=1
+!  dump_array = dble(temp)
+    call ftinit(unit1,filename,blocksize,status1)
+    simple=.true.
+    bitpix=-64
+    naxes(1)=nx
+    naxes(2)=ny
+    naxes(3)=nz
+    nelements=naxes(1)*naxes(2)*naxes(3)
+    extend=.false.
+    group=1
+    fpixel=1
 
-    print*,naxes
+    ! print*,naxes
 
-	  call ftphpr(unit1,simple,bitpix,3,naxes,0,1,extend,status1)
+    call ftphpr(unit1,simple,bitpix,3,naxes,0,1,extend,status1)
     if (status1 .gt. 0) call printerror(status1)
 
-	  call ftpprd(unit1,group,fpixel,nelements,temp,status1)
+    call ftpprd(unit1,group,fpixel,nelements,temp,status1)
     if (status1 .gt. 0) call printerror(status1)
 
-	  call ftclos(unit1, status1)
+    call ftclos(unit1, status1)
     if (status1 .gt. 0) call printerror(status1)
 
-	  call ftfiou(unit1, status1)
+    call ftfiou(unit1, status1)
 
     if (status1 .gt. 0) call printerror(status1)
 
 
-	 end SUBROUTINE writefits
+   end SUBROUTINE writefits
 !================================================================================
+
+
+function facrat(ilow, ihigh)
+
+  implicit none
+  integer ilow,ihigh,j
+  real*8 facrat
+  facrat = 1.0/(ilow+1.0)
+  do j=ilow+2,ihigh
+   facrat = facrat / dble(j)
+  enddo
+
+end function facrat
+
+!------------------------------------------------------------------------
+
 
 subroutine printerror(status)
 

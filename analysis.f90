@@ -5,13 +5,13 @@
   use data_analysis
 
   implicit none
-  integer ell, ellp,i, nmodels
+  integer ell, ellp,i, nmodels, modelno
   real*8 tfin, tstart, nyears, yearnum
   character*3 yearc
   character*3 ellc
   character*80 filename
 
-  type(option_s):: opts(9)
+  type(option_s):: opts(10)
    opts(1) = option_s( "compute_norms", .false., 'a' )
    opts(2) = option_s( "flow_analysis",  .true.,  'b' )
    opts(3) = option_s( "yearnum", .true.,  'c')
@@ -20,19 +20,21 @@
    opts(6) = option_s( "nyears", .true.,  'f')
    opts(7) = option_s( "help", .false.,  'h')
    opts(8) = option_s( "instrument", .true.,  'i')
-   opts(9) = option_s( "artificial_data", .true.,  'j')
+   opts(9) = option_s( "nmodels", .true.,  'n')
+   opts(10) = option_s( "modelno", .true.,  'm')
 
     compute_norms = .false.
     flow_analysis = .true.
     yearnum = -1
-    ell = -1
-    ellp = -1
+    ell = 50 ! some random value
+    ellp = 51 ! some random value
     nyears = -1
     instrument = 'FFF'
     nmodels = 1
+    modelno = 1
 
     do
-        select case( getopt( "abcdefhij:", opts ) ) ! opts is optional (for longopts only)
+        select case( getopt( "abcdefhinm:", opts ) ) ! opts is optional (for longopts only)
             case( char(0) )
                 exit
             case( 'a' )
@@ -59,8 +61,10 @@
                 instrument = optarg
                 !if (optarg == 'HMI' .or. optarg == 'MDI') instrument = optarg
                 !if (optarg == 'mdi' .or. optarg == 'hmi') instrument = upper(optarg)
-            case( 'j' )
+            case( 'n' )
                 read(optarg,*) nmodels
+            case( 'm' )
+                read(optarg,*) modelno
         end select
     end do
     if (nyears < 0 .or. ell < 0 .or. ellp < 0 .or. yearnum < 0 &
@@ -94,8 +98,10 @@
 ! yearnum =  1
 !nyears = 1
  call basic_setup
- call analyzethis(nmodels, nyears, yearnum) 
+ call analyzethis(nmodels,modelno, nyears, yearnum) 
  call cpu_time(tfin)
+
+ print*,"Time taken",int(tfin-tstart),"s"
 
 ! write(112, *)
 ! write(112, *) 'Time taken'
