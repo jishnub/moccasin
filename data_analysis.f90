@@ -69,7 +69,7 @@ MODULE DATA_ANALYSIS
 
   integer orders(lmin:lmax,2)
 
-  character*100 username
+  character*100 username,homedir
   
 
 Contains
@@ -464,6 +464,7 @@ subroutine analyzethis (nmodels,modelno, nyears, yearnum)
  integer sst
 
  call getenv("USER",username)
+ call getenv("HOME",homedir)
 
   ! hmidir = "/scratch/"//trim(username)//"/HMI"
   ! mdidir = "/scratch/"//trim(username)//"/MDI"
@@ -536,8 +537,8 @@ subroutine analyzethis (nmodels,modelno, nyears, yearnum)
 
 ns = (smax-1)/2 + 1
 allocate(w(nr,ns,nmodels))
-call readfits('radius.fits',r,nr,1,1)
-call readfits('wmodels.fits',w,nr,ns,nmodels)
+call readfits(trim(homedir)//'/moccasin/radius.fits',r,nr,1,1)
+call readfits(trim(homedir)//'/moccasin/wmodels.fits',w,nr,ns,nmodels)
 
 do k=1,nmodels
   do s=1,ns
@@ -551,8 +552,8 @@ dr(nr) = dr(nr-1)
 
 number_of_ln_pairs=0
 
-call system("sed -i '/^$/d' modeln") ! remove empty lines from the file before the length is measured
-open(455, file='modeln', status='old', action='read')
+call system("sed -i '/^$/d' "//trim(homedir)//"/moccasin/modeln") ! remove empty lines from the file before the length is measured
+open(455, file=trim(homedir)//'/moccasin/modeln', status='old', action='read')
   do  
    read(455,*,IOSTAT=ierr)
    if (ierr .ne.0) exit
@@ -565,7 +566,7 @@ if (number_of_ln_pairs == 0) then
 endif
 number_of_ln_pairs = number_of_ln_pairs-1
 
-open(455, file='modeln', status='old', action='read')
+open(455, file=trim(homedir)//'/moccasin/modeln', status='old', action='read')
 read(455,*) nu_min, nu_max
 om_min = nu_min * 2*pi
 om_max = nu_max * 2*pi
@@ -623,11 +624,11 @@ close(455)
         leakdiag = 0
       endif
       
-      powspec(:,k,0) = nj(ell, ord)*abs(leaks/(oms**2 - (omegas(mp) &
-        - (0.0,0.5)*fwhm(ell)%ords(ord)*2*pi)**2))**2+ powspec(:,k,0)
-      
-      powspec(:,k,1) = nj(ell, ord)*abs(leakdiag/(oms**2 - (omegas(mp) &
-        - (0.0,0.5)*fwhm(ell)%ords(ord)*2*pi)**2))**2+ powspec(:,k,0)      
+      powspec(:,k,1) = nj(ell, ord)*abs(leaks/(oms**2 - (omegas(mp) &
+        - (0.0,0.5)*fwhm(ell)%ords(ord)*2*pi)**2))**2+ powspec(:,k,1)
+
+      powspec(:,k,2) = nj(ell, ord)*abs(leakdiag/(oms**2 - (omegas(mp) &
+        - (0.0,0.5)*fwhm(ell)%ords(ord)*2*pi)**2))**2+ powspec(:,k,2)      
 
       
      enddo
@@ -643,7 +644,7 @@ close(455)
 
  write(modelnoch,'(I3.3)') modelno
 
- call writefits(trim(prefix)//'/power_spectra/model'//modelnoch//'.fits',powspec,noms,number_of_ln_pairs,1)
+ call writefits(trim(prefix)//'/power_spectra/model'//modelnoch//'.fits',powspec,noms,number_of_ln_pairs,2)
  call writefits(trim(prefix)//'/acoeffs/model'//modelnoch//'.fits',a,ns, number_of_ln_pairs, 1)
 
 end subroutine analyzethis
