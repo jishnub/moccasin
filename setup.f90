@@ -4,8 +4,9 @@ PROGRAM SETUP
  implicit none
  include 'params.i'
 
- integer ell, year, yearlength, t, s, yearend, yearnum, ellp
- integer elmin, elmax, yst,esst, j, ell2, dell, nyears_instrum
+ integer ell, year, t, s, ellp,int_nyears, int_yearlength, int_yearend, int_yearnum
+ integer elmin, elmax, yst,esst, j, ell2, dell
+ real*8 nyears, yearlength, yearend, yearnum
 
  character*3 ellc, ellc2
  character*2 ynum, tc, sc
@@ -50,7 +51,7 @@ PROGRAM SETUP
                 read(optarg,*) yearlength
             case( 'f' )
                 print *,'Need to provide options of the form'
-             print*,' ./setup --lmin 50 --lmax 60 --yearlength 5 --yearnum 2 --instrument HMI --dell 2'
+             print*,' ./setup --lmin 50 --lmax 60 --nyears 5 --yearnum 2 --instrument HMI --dell 2'
                 print *,'Note that dell has to be greater than or equal to 0'
                 print *,'Optional inputs are --compute_norms (default is not to compute normalization), which forces dell = 0'
                 print *,'and --kernels to compute leakage kernels (default is for data processing)'
@@ -67,6 +68,7 @@ PROGRAM SETUP
         end select
     end do
 
+    if (compute_norms) dell = 0
     if (yearlength < 0 .or. elmin < 0 .or. dell < 0 .or. yearnum < 0 &
         .or. instrument == 'FFF' .or. elmax < 0) then
      print *,'Need lmin, lmax, dell, nyears, start year, maxell and instrument. Quitting.'
@@ -81,8 +83,15 @@ PROGRAM SETUP
  if (data_process) then
   call system('mkdir -p '//trim(adjustl(outdir))//'/processed')
 
-  do year = yearnum,yearend,yearlength
-   write(ynum,'(I2.2)') year
+  int_yearnum = nint((yearnum-1.0)*5.0) + 1
+  int_yearlength = nint(yearlength*5.0)
+  int_yearend = nint((yearend - 1.0)*5.0)+1
+
+  do year = int_yearnum,int_yearend,int_yearlength
+   write(ynum,'(I2.2)') year!nint((year-1)*5.0) + 1
+  !print *,year,ynum
+ !stop
+ !cycle
    do ell = elmin, elmax
 !    do ell2 = ell+1,lmax
      ell2 = ell + dell

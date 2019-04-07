@@ -38,27 +38,27 @@ PROGRAM POSTPROCESS
  !instrument = 'HMI'
 
 
- smax = 30
+ smax = 50
  smin = 1
- if (.not. sound) smin = 1
+ if (.not. sound) smin = 5
  ns = (smax+1)**2
 
  yearlength = 1
 
  dnu = 1e6/(360.d0*24.d0*3600.d0 * yearlength)
- lmin = 30
- lmax = 249
+ lmin = 10
+ lmax = 191
  nyears = 14
  if (instrument == 'HMI') then 
-  lmin = 50
-  nyears = 8
+  lmin = 10
+  nyears = 3
  endif
  freqmin = 1!max(floor(0./dnu),1)
- freqmax = min(floor(2.5/dnu),75)
- nsig = 75
+ freqmax = 95!min(floor(2.5/dnu),75)
+ nsig = 95!75
  
- allocate(temp(1:ns,0:25,nsig,2),pow(1:freqmax,0:smax,-smax:smax,nyears),&
-     powst(1:freqmax,0:smax,-smax:smax,nyears),inds(0:lmax,0:26),&
+ allocate(temp(1:ns,0:30,nsig,2),pow(1:freqmax,0:smax,-smax:smax,nyears),&
+     powst(1:freqmax,0:smax,-smax:smax,nyears),inds(0:lmax,0:30),&
      noise(1:freqmax,0:smax,-smax:smax,nyears),noisest(0:smax,-smax:smax,nyears),&
      !noisefreq(1:freqmax,0:smax,-smax:smax,nyears),&
      noisestfreq(1:freqmax,0:smax,-smax:smax,nyears),&
@@ -67,8 +67,8 @@ PROGRAM POSTPROCESS
 
  inds = 0
  nmodes = 0
- if (.not. sound) open(55,file='matlab/alpha_'//instrument//'.txt',action='read',position='rewind')
- if (sound) open(55,file='matlab/cond_5-6/alpha_sound_'//instrument//'.txt',action='read',position='rewind')
+ if (.not. sound) open(55,file='alpha_'//instrument//'.txt',action='read',position='rewind')
+ if (sound) open(55,file='alpha_sound_'//instrument//'.txt',action='read',position='rewind')
  do 
   read(55,*,IOSTAT=ierr) ell,n
   if (ierr .ne.0) exit
@@ -79,34 +79,34 @@ PROGRAM POSTPROCESS
  close(55)
  allocate(alphanl(ns,nmodes),noisecoef(ns,nmodes),temp3(nmodes,nsig,2),temp4(nmodes,nsig))
 
- if (.not. sound) call readfits_normal('matlab/cond_5-6/alphas_'//instrument//'_tracking_'// &
+ if (.not. sound) call readfits_normal('alphas_'//instrument//'_tracking_'// &
   track//'_depth_'//dep//'.fits',alphanl,ns,nmodes,1)
 
- if (sound) call readfits_normal('matlab/cond_5-6/alphas_sound_'//instrument//'_tracking_'// &
+ if (sound) call readfits_normal('alphas_sound_'//instrument//'_tracking_'// &
   track//'_depth_'//dep//'.fits',alphanl,ns,nmodes,1)
 
- do year = 1,nyears,yearlength
+ do year = 2,4!1,nyears,yearlength
   print *,year
-  write(ynum,'(I2.2)') year
-  write(ynum2,'(I2.2)') year+1
+  write(ynum,'(I2.2)') 5*(year-1)+1
+  write(ynum2,'(I2.2)') yearlength*5
 
   do ell = lmin, lmax
-
+   print *,ell
    if (sum(inds(ell,:)) == 0) cycle 
    write(lch,'(I3.3)') ell
 
    nord = 0
-   filename = '/scr28/shravan/'//instrument//'/'//'tracking'//track//'/bcoef_l_'//lch//'_lp_'//lch//&
-   '_year_'//ynum//'_'//ynum//'.fits'
+   filename = '/scratch/shravan/'//instrument//'2/'//'tracking'//track//'/bcoef_l_'//lch//'_lp_'//lch//&
+   '_year_'//ynum//'_'//ynum2//'.fits'
 
-   metadata = '/scr28/shravan/'//instrument//'/'//'tracking'//track//'/bcoef_metadata_l_'//lch//'_lp_'//lch//&
-   '_year_'//ynum//'_'//ynum
+   metadata = '/scratch/shravan/'//instrument//'2/'//'tracking'//track//'/bcoef_metadata_l_'//lch//'_lp_'//lch//&
+   '_year_'//ynum//'_'//ynum2
 
-   noisename = '/scr28/shravan/'//instrument//'/'//'tracking'//track//'/noise_l_'//lch//'_lp_'//lch//&
-   '_year_'//ynum//'_'//ynum//'.fits'
+   noisename = '/scratch/shravan/'//instrument//'2/'//'tracking'//track//'/noise_l_'//lch//'_lp_'//lch//&
+   '_year_'//ynum//'_'//ynum2//'.fits'
 
-   varname = '/scr28/shravan/'//instrument//'/'//'tracking'//track//'/noisevar_l_'//lch//'_lp_'//lch//&
-   '_year_'//ynum//'_'//ynum//'.fits'
+   varname = '/scratch/shravan/'//instrument//'2/'//'tracking'//track//'/noisevar_l_'//lch//'_lp_'//lch//&
+   '_year_'//ynum//'_'//ynum2//'.fits'
 
 
 
@@ -136,14 +136,8 @@ PROGRAM POSTPROCESS
      
 
     call readfits(trim(adjustl(filename)),temp(1,1,1,1),ns,nord,nsig)
-
-    inquire(file=trim(adjustl(noisename)), exist=exists)
-    if (exists) call readfits_normal(trim(adjustl(noisename)),temp2(1,1,1),ns,nord,nsig)
-
-    exists = .false.
-    vartemp = 0.d0 
-    if (year==1) inquire(file=trim(adjustl(varname)), exist=exists)
-    if (exists) call readfits_normal(trim(adjustl(varname)),vartemp(1,1,1),ns,nord,nsig)
+    call readfits_normal(trim(adjustl(noisename)),temp2(1,1,1),ns,nord,nsig)
+    if (year==1) call readfits_normal(trim(adjustl(varname)),vartemp(1,1,1),ns,nord,nsig)
 
     if (sum(abs(temp)**2) > 1.0) cycle
     do i = 1, nord
@@ -362,7 +356,7 @@ Contains
                         readarr,anynull,status)
 	   !readarr = temp
 	   
-!	   print *,minval(readarr),maxval(readarr)
+	   !print *,minval(readarr),maxval(readarr)
 	  call ftclos(unit, status)
 	  call ftfiou(unit, status)
 

@@ -55,7 +55,7 @@ subroutine basic_setup!(compute_wigner)
    !sigmax = int(7.2*8.64*6)
    ordmax = 30
    ordmin = 0
-   open(99, file='/scratch/jb6888/QDP/egvt.sfopal5h5', form='unformatted', status='old')
+   open(99, file='/home/shravan/QDP/egvt.sfopal5h5', form='unformatted', status='old')
    read(99)
    read(99) arr
    close(99)
@@ -205,7 +205,7 @@ subroutine basic_setup!(compute_wigner)
 
  allocate(tempr(609,305),leakage(0:304))
 
- call readfits('/scratch/jb6888/QDP/leaks.fits',tempr,609,305,1)
+ call readfits('/home/shravan/QDP/leaks.fits',tempr,609,305,1)
  do ell = 0,304
   allocate(leakage(ell)%em(-ell:ell))
   leakage(ell)%em(-ell:ell) = tempr(1:2*ell+1,ell+1)
@@ -221,7 +221,7 @@ subroutine compute_kernels_all(s, dell, asymptotics)  !inversion !(polR, polH, p
 
 implicit none
 integer*8 planfwd, planinv
-integer s, ind, indp, leng, ord, k, ell, ellp, ordp,jj, dell,storderp
+integer s, ind, indp, leng, ord, k, ell, ellp, ordp,jj, dell,storderp,i
 !parameter(leng = (lmax-lmin+1)**2*(ordmax-ordmin+1)**2)
 complex*16, dimension(:,:), allocatable :: polR, polH, polT, polc
 real*8 conl, conlp, overallcon, l, m, n, lp, mp, np
@@ -290,6 +290,7 @@ k = 0
 
      ind = mapfwd(ell,ord)
      indp = mapfwd(ellp,ordp)
+     print *,ellp, ordp, ell, ord, ind, indp,k!,asymptotics
      conl = dble(omeg(l,0.0d0)**2)
      conlp = dble(omeg(lp,0.0d0)**2)
 
@@ -327,10 +328,11 @@ k = 0
      else
       polR(:,k) = 0.d0
       !polR(:,k) = (1-2.*modulo(ell,2))*(0.d0,1.d0)*(eigU(:,ind)**2+l*(l+1)*eigV(:,ind)**2)*rho*r*l*(2*l/pi)**0.5
-      polR(:,k) = (1-2.*modulo(ell,2))*(0.d0,1.d0)*(eigU(:,ind)*eigU(:,indp)-eigU(:,ind)*eigV(:,indp)-eigU(:,indp)*eigV(:,ind)+&
+      polR(:,k) = (1-2.*modulo(ell,2))*(0.d0,1.d0)*(eigU(:,ind)*eigU(:,indp) -eigU(:,ind)*eigV(:,indp)-eigU(:,indp)*eigV(:,ind)+&
                                                    l*(l+1)*eigV(:,ind)*eigV(:,indp))*rho*r*l*(2*l/pi)**0.5
       polc(:,k) = -(1-2.*modulo(ell,2))*rho*c2*sqrt(2*l/pi)*& 
          (r*deigU(:,ind) - l*(l+1)*eigV(:,ind) + 2* eigU(:,ind))*(r*deigU(:,indp) - l*(l+1)*eigV(:,indp) + 2* eigU(:,indp)) 
+
      endif
     endif
    enddo
@@ -342,7 +344,7 @@ k = 0
  write(dellst,'(I1.1)') dell
  print *,'Writing out radial points into file radius.fits'
  call writefits('radius.fits',r,nr,1,1)
- print *,'Writing out flow kernels into file '//'kernels_'//llow//'_to_'//lhigh//'_dell_'//dellst//'.fits'
+ print *,'Writing out flow kernels into file '//instrument//'_kernels_'//llow//'_to_'//lhigh//'_dell_'//dellst//'.fits'
  call writefits(instrument//'_kernels_'//llow//'_to_'//lhigh//'_dell_'//dellst//'.fits',aimag(polR),nr,leng,1)
  print *,'Writing out sound speed kernels into file '//'soundspeed_kernels_'//llow//'_dell_'//dellst//'_to_'//lhigh//'.fits'
  call writefits(instrument//'_soundspeed_kernels_'//llow//'_to_'//lhigh//'_dell_'//dellst//'.fits',real(polc),nr,leng,1)
@@ -357,11 +359,16 @@ do ell = lmin, lmax
   if (ell == ellp) storderp = ord
   do ordp = storderp,orders(ellp,2)
 
-   if (existence(ell,ord) .and. existence(ellp,ordp)) then
+  if (existence(ell,ord) .and. existence(ellp,ordp)) then
+    if (.not.(freqnu(ell)%ords(ord) .ge. freqmin .and. &
+      freqnu(ellp)%ords(ordp) .ge. freqmin .and. &
+      freqnu(ell)%ords(ord) .le. freqmax .and. &
+      freqnu(ellp)%ords(ordp) .le. freqmax)) cycle
+
     freqdiff = abs(freqnu(ell)%ords(ord) - freqnu(ellp)%ords(ordp))
     if (freqdiff .gt. sigmax .or. freqdiff .lt. sigmin) cycle
     k=k+1
-    print *,ell, ord,ellp, ordp, maxval(abs((polc(:,k)))),maxval(abs((polR(:,k))))
+    print *,ell, ord,ellp, ordp, k,maxval(abs((polc(:,k)))),maxval(abs((polR(:,k))))
     if (asymptotics) write(333,*), ell,ord,ellp,ordp
     if (.not. asymptotics) write(333,*), ell,ord,ellp,ordp,s
    endif
@@ -625,7 +632,7 @@ subroutine BINARYREADER
 
  allocate(X(4,nr), vars(6,nr))
 
- open(99, file='/scratch/jb6888/QDP/sfopal5h5', form='unformatted', status='old')
+ open(99, file='/home/shravan/QDP/sfopal5h5', form='unformatted', status='old')
  read(99)
  read(99) arr2
 
@@ -651,7 +658,7 @@ subroutine BINARYREADER
  rho = rho(nr:1:-1)
  c2 = c2(nr:1:-1)
 
- open(99, file='/scratch/jb6888/QDP/egvt.sfopal5h5', form='unformatted', status='old')
+ open(99, file='/home/shravan/QDP/egvt.sfopal5h5', form='unformatted', status='old')
  read(99)
  read(99) arr
 
@@ -1820,14 +1827,14 @@ subroutine read_leakage(dl,dm)
    allocate(cr_mat(2*dm_mat+1,2*dl_mat+1,ind),ci_mat(2*dm_mat+1,2*dl_mat+1,ind), &
          hr_mat(2*dm_mat+1,2*dl_mat+1,ind),hi_mat(2*dm_mat+1,2*dl_mat+1,ind))
 
-   call readfits('/scratch/jb6888/QDP/leakvw0/default/vradsum/leakrlist.vradsum.fits',cr_mat,&
+   call readfits('/home/shravan/QDP/leakvw0/default/vradsum/leakrlist.vradsum.fits',cr_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
-   call readfits('/scratch/jb6888/QDP/leakvw0/default/vradsum/leakilist.vradsum.fits',ci_mat,&
+   call readfits('/home/shravan/QDP/leakvw0/default/vradsum/leakilist.vradsum.fits',ci_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
 
-   call readfits('/scratch/jb6888/QDP/leakvw0/default/vhorsum/leakrlist.vhorsum.fits',hr_mat,&
+   call readfits('/home/shravan/QDP/leakvw0/default/vhorsum/leakrlist.vhorsum.fits',hr_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
-   call readfits('/scratch/jb6888/QDP/leakvw0/default/vhorsum/leakilist.vhorsum.fits',hi_mat,&
+   call readfits('/home/shravan/QDP/leakvw0/default/vhorsum/leakilist.vhorsum.fits',hi_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
 
    

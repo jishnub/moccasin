@@ -326,7 +326,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
 
  character*4 daynum
  character*3 lch, lch_p, trackch, lchtemp, lowinst
- character*2  ynum, ynum2
+ character*2  ynum, ynum2, ynum0
 ! character*1 omin, omax
 
  real*8 hilim_mp, lolim_mp, lolim_m, hilim_m, gamnlp, cons, con0, defcon,samprate
@@ -348,7 +348,6 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
  logical compute_noise, lexist, compute_ab_initio, compute_varnoise
  logical restart
  character*80 prefix, workdir, freqdir
- character(len=120) tarcmd
 
  basel = (/ell, ellp/)
  
@@ -383,11 +382,13 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
 
  nchunk = nint(nyears*5.0)
 
+
+
  if (instrument =='HMI') then
    prefix = outhmidir
    freqdir = freqhmidir
    nt = nint(360 * 24 * 80 * nyears)
-   daystart = 6328 + nint((yearnum - 1.0)*5.0)
+   daystart = 6328 + nint((yearnum - 1.0)*360.0)
    samprate = 45.0
 
  elseif (instrument =='MDI') then
@@ -397,19 +398,12 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
    samprate = 60.0
    deltast = 0
    if (yearnum .gt. 2.0)  deltast = 288 ! 2224 - 1936
-   daystart = 1216 + deltast + nint((yearnum - 1.0)*5.0)
+   daystart = 1216 + deltast + nint((yearnum - 1.0)*360.0)
  endif
  
  write(ynum,'(I2.2)') nint((yearnum-1)*5.0)+1
  write(ynum2,'(I2.2)') nchunk
 
- call system('mkdir -p '//adjustl(trim(prefix)))
- call system('mkdir -p '//adjustl(trim(prefix))//'/tracking'//trackch)
- call system('mkdir -p '//adjustl(trim(prefix))//'/processed')
-
- open(331,file=adjustl(trim(prefix))//'/tracking'//trackch//&
-       '/frequency_metadata_l_'//lch//'_lp_'//lch_p//'_year_'//ynum//'_'//ynum2,status='unknown',&
-       action='write')
 
  !if (instrument == 'MDI') then 
   !t = daystart + (yearnum -1)*360
@@ -417,10 +411,11 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
   lowinst = Lower(instrument)
   call construct_frequencies (adjustl(trim(freqdir))//'/'//lowinst//'.'//daynum//'.36', ell, &
                                ellp,yearnum)
-  ! prefix = '/scratch/jb6888/'//instrument
+  ! prefix = '/scratch/shravan/'//instrument
+
    nordcorr = 0
    ordcorr = -1
-  if (.not. compute_norms) then
+  if ((.not. compute_norms) .and. (ell .ne. ellp)) then
    do order=lbound(en(ell)%ords,1),ubound(en(ell)%ords,1)!1,size(en(ell)%ords)
     if (en(ell)%ords(order)< 0 .or. freqnu(ell)%ords(order) .lt. freqmin) cycle
     storderp = lbound(en(ellp)%ords,1)
@@ -428,32 +423,58 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
     do orderp = storderp,ubound(en(ellp)%ords,1)!1,size(en(ellp)%ords)
      if (en(ellp)%ords(orderp)< 0 .or. freqnu(ellp)%ords(orderp) .lt. freqmin) cycle
     !print *,order,orderp,freqnu(ellp)%ords(orderp) ,freqnu(ell)%ords(order),freqnu(ellp)%ords(orderp) -freqnu(ell)%ords(order)
-     if (abs(freqnu(ellp)%ords(orderp) - freqnu(ell)%ords(order)) .le. sigmax &
+     if (abs(freqnu(ellp)%ords(orderp) - freqnu(ell)%ords(order)) .le. 15*max(fwhm(ellp)%ords(orderp),fwhm(ell)%ords(order))&!(sigmax + offresonance) &
       .and. abs(freqnu(ellp)%ords(orderp) - freqnu(ell)%ords(order)) .ge. sigmin ) then
+     !print *,ell,order,fwhm(ell)%ords(order),ellp,orderp,fwhm(ellp)%ords(orderp),&
+      !             abs(freqnu(ellp)%ords(orderp) - freqnu(ell)%ords(order))
+
       nordcorr=nordcorr+1 
       ordcorr(nordcorr,1) = en(ell)%ords(order)
       ordcorr(nordcorr,2) = en(ellp)%ords(orderp)
+     !  print *,ordcorr(nordcorr,1),en(ell)%ords(order),order,orderp,nordcorr,ubound(en(ellp)%ords,1)
+
      endif
     enddo
    enddo
   else
-   do order=1,size(en(ell)%ords)
-     ordcorr(order,1) = en(ell)%ords(lbound(en(ell)%ords,1)+order-1)
-     ordcorr(order,2) = en(ell)%ords(lbound(en(ell)%ords,1)+order-1)
+   do order=lbound(en(ell)%ords,1),ubound(en(ell)%ords,1)!1,size(en(ell)%ords)
+    if (en(ell)%ords(order)< 0 .or. freqnu(ell)%ords(order) .lt. freqmin .or. freqnu(ell)%ords(order) .gt. freqmax) cycle
+    nordcorr = nordcorr + 1
+    ordcorr(nordcorr,1) = en(ell)%ords(order)
+    ordcorr(nordcorr,2) = en(ell)%ords(order)
    enddo
-   nordcorr = size(en(ell)%ords)
+   !nordcorr = size(en(ell)%ords)
+   !nordcorr = size(en(ell)%ords)
   endif
 
+ !print *,nordcorr,ordcorr(:,1),en(ell)%ords(:)
   if (nordcorr == 0) then
-   print *,'Couldnt find any resonances within specified frequency range'
+   print *,'Couldnt find any resonances within specified frequency range between', ell, 'and', ellp
+   call system('rm '//adjustl(trim(workdir))//'/lengs_'//lch//'_'//lch_p//'_'//ynum)
+   call system('rm '//adjustl(trim(prefix))//'/processed/'//lch//'_'//lch_p//'_'//ynum)
+   call exit()
    stop
   endif 
 
+  open(331,file=adjustl(trim(prefix))//'/tracking'//trackch//&
+       '/frequency_metadata_l_'//lch//'_lp_'//lch_p//'_year_'//ynum//'_'//ynum2,status='unknown',&
+       action='write')
 
   if (.not. compute_norms) then
+   call system('mkdir -p '//adjustl(trim(prefix)))
+   call system('mkdir -p '//adjustl(trim(prefix))//'/tracking'//trackch)
+   call system('mkdir -p '//adjustl(trim(prefix))//'/processed')
 
    open(102,file=adjustl(trim(prefix))//'/tracking'//trackch//'/bcoef_metadata_l_'//lch//'_lp_'//lch_p//&
     '_year_'//ynum//'_'//ynum2,action='write',status='unknown', position='rewind')
+   do i = 1,nordcorr!ordmin, ordmax
+    order = ordcorr(i,1)
+    orderp = ordcorr(i,2)
+    write(102,*) int(en(ell)%ords(order)), freqnu(ell)%ords(order), a1(ell)%ords(order), &
+            int(en(ellp)%ords(orderp)), freqnu(ellp)%ords(orderp), a1(ellp)%ords(orderp)
+   enddo
+   flush(102)
+   close(102)
 
 
    open(112,file=adjustl(trim(prefix))//'/tracking'//trackch//'/status_l_'//lch//'_lp_'//lch_p//&
@@ -523,7 +544,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
 
    do m = -ellp,-1
     do offseti = 1, nt-1
-      shtdatap(offseti,m) = (1-2*modulo(-m,2))*conjg(shtdatap(nt-offseti,-m))
+     shtdatap(offseti,m) = (1-2*modulo(-m,2))*conjg(shtdatap(nt-offseti,-m))
     enddo
    enddo
   endif
@@ -547,7 +568,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
       inquire(file=adjustl(trim(prefix))//'/norms/'//&
              lchtemp//'_year_'//ynum//'_'//ynum2,exist=lexist)
 
-     !if (instrument =='MDI') inquire(file='/tmp29/jb6888/'//instrument//'/norms/'//instrument//&
+     !if (instrument =='MDI') inquire(file='/tmp29/shravan/'//instrument//'/norms/'//instrument//&
      !        '_'//lchtemp//'_year_'//ynum,exist=lexist)
       if (dl==0 .and. (.not.lexist)) then
        print *,'File doesnt exist:',adjustl(trim(prefix))//'/norms/'//&
@@ -561,8 +582,8 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
        open(1555,file=adjustl(trim(prefix))//'/norms/'//&
              lchtemp//'_year_'//ynum//'_'//ynum2,status='old',action='read')
 
-      !      if (instrument=='MDI') open(1555,file='/tmp29/jb6888/'//instrument//'/norms/'//instrument//&
-      !             '_'//lchtemp//'_year_'//ynum,status='old',action='read')
+!      if (instrument=='MDI') open(1555,file='/tmp29/shravan/'//instrument//'/norms/'//instrument//&
+!             '_'//lchtemp//'_year_'//ynum,status='old',action='read')
 
        do  
         read(1555,*,IOSTAT=ierr) con0, order
@@ -601,7 +622,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
    ! if (instrument =='HMI') 
     open(144,file=adjustl(trim(prefix))//'/norms/'//lch//'_year_'//ynum//'_'//ynum2,status='unknown') !instrument//'_'//
 
-   ! if (instrument =='MDI') open(144,file='/tmp29/jb6888/'//instrument//& ! comment out in production mode
+   ! if (instrument =='MDI') open(144,file='/tmp29/shravan/'//instrument//& ! comment out in production mode
    !  '/norms/'//instrument//'_'//lch//'_year_'//ynum,status='unknown')
 
    endif
@@ -742,7 +763,8 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
       if (any(en(ell)%ords .eq. order) .and. (freqnu(ell)%ords(order) .ne. 0) &
        .and. any(en(ellp)%ords .eq. orderp) .and. (freqnu(ellp)%ords(orderp) .ne. 0)) then
 
-         refind0 = nint(abs(freqnu(ellp)%ords(orderp) - freqnu(ell)%ords(order))/dnu) !+ nint(rand())*(1-2*nint(rand()))
+         ! REFIND0 is SET ZERO: CHANGE
+         refind0 = 0!nint(abs(freqnu(ellp)%ords(orderp) - freqnu(ell)%ords(order))/dnu) !+ nint(rand())*(1-2*nint(rand()))
          write(331,*) ell,order,freqnu(ell)%ords(order), ellp,orderp,freqnu(ellp)%ords(orderp)
 
          do t = -smax, smax 
@@ -944,34 +966,15 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
          abspow2,limitpow2,tempm,mask) 
    enddo ! order loop
 
-   close(144)
-
   call cpu_time(tfin)
   print *,'Computational time:',tfin-tstart
 !  if (compute_norms) then 
  ! if (instrument=='HMI') 
-  !if (instrument=='MDI') call system('rm /tmp29/jb6888/'//instrument//'/processed/'//ynum//'_'//lch)
+  !if (instrument=='MDI') call system('rm /tmp29/shravan/'//instrument//'/processed/'//ynum//'_'//lch)
   call system('rm '//adjustl(trim(workdir))//'/lengs_'//lch//'_'//lch_p//'_'//ynum)
   call system('rm -f '//adjustl(trim(prefix))//'/processed/'//lch//'_'//lch_p//'_'//ynum)
   if (compute_norms) then
-    
-    ! Check if the tarball exists. If it does then append to it, else create a new one
-    inquire(file=trim(prefix)//'/norms/'//lch//'.tar',exist=lexist)
-
-    if (lexist) then
-    !   tarcmd = "tar -uf "//trim(prefix)//'/norms/'//lch//".tar -C "//trim(prefix)//'/norms'//" "//&
-    !     lch//'_year_'//ynum//'_'//ynum2//" --remove-files"
-    !   print*,trim(tarcmd)
-    !   call system(trim(tarcmd))
-    !   ! call system("find "//trim(prefix)//'/norms/'//lch//'_year_'//ynum//'_'//ynum2)
-    else
-    !   ! tarcmd = "tar -cf "//trim(prefix)//'/norms/'//lch//".tar -C "//trim(prefix)//'/norms'//" "//&
-    !   !   lch//'_year_'//ynum//'_'//ynum2//" --remove-files"
-    !   ! print*,trim(tarcmd)
-    !   ! call system(trim(tarcmd))
-    endif
-
-    call exit()
+   call exit()
   endif
 
  !if (instrument =='HMI') 
@@ -979,7 +982,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
       ell, ellp, yearnum, nchunk, nsig, nordcorr, compute_noise, compute_varnoise)
 
   close(331)
- !if (instrument =='MDI') call writefits_bcoef_same('/tmp29/jb6888/'//instrument//'/tracking'//trackch//'/', &
+ !if (instrument =='MDI') call writefits_bcoef_same('/tmp29/shravan/'//instrument//'/tracking'//trackch//'/', &
  !     ell, ellp, yearnum, nyears, compute_noise, compute_varnoise)
 
  nullify(arr)
@@ -1066,7 +1069,7 @@ if (instrument == 'MDI') then
   st = startpoint !+ deltast
   do i=0,nmax-1
    write(daynum,'(I4.4)') st
-   call readfits(trim(adjustl(mdidir))//'/'//ellc//'/MDI_'//ellc//'_' &
+   call readfits(trim(adjustl(mdidir))//'/MDI_'//ellc//'_' &
        //daynum//'.fits', dat, twont72,ell+1,1)
    indst = i*nt72+1
    indend = (i+1)*nt72
@@ -1116,6 +1119,7 @@ elseif (instrument == 'HMI') then
 
   call dfftw_plan_guru_dft(fwdplan,1,nt,1,1,1,ell+1,&
      & nt,nt,inp(1,1),shtdat(1,1),FFTW_BACKWARD,FFTW_ESTIMATE)
+
 !  call dfftw_plan_many_dft(fwdplan,1,nt,ell+1,&
 !     & inp(1,1),nt,1,nt,shtdat(1,1),nt,1,nt,FFTW_BACKWARD,FFTW_ESTIMATE)
 
@@ -1126,7 +1130,7 @@ elseif (instrument == 'HMI') then
   write(ellc,'(I3.3)') ell
 
 !  nmax = nyears*5-1
- ! open(325,file='/scr28/jb6888/locations/locs_ell_'//ellc,action='read',&
+ ! open(325,file='/scr28/shravan/locations/locs_ell_'//ellc,action='read',&
  !      position='rewind',status='old',form='FORMATTED')
  ! stnew = (yearnum-1)*5
  ! do i=1,stnew
@@ -1137,7 +1141,7 @@ elseif (instrument == 'HMI') then
   do i=0,nmax-1
  !  read(325,'(A)') dirloc
    write(daynum,'(I4.4)') st
-   call readfits(trim(adjustl(hmidir))//'/'//ellc//'/HMI_'//ellc//'_'//daynum//'.fits',dat,twont72,ell+1,1)
+   call readfits(trim(adjustl(hmidir))//'/HMI_'//ellc//'_'//daynum//'.fits',dat,twont72,ell+1,1)
  !  call readfits('/scratch/data/HMI/hmi.v_sht_gf_72d.'&
   !     //daynum//'.'//trim(adjustl(el))//'.fits', dat, twont72,ell+1,1)
    indst = i*nt72+1
@@ -1168,13 +1172,13 @@ END FUNCTION SHTDAT
         integer i1, i2, i3, i4, l, lp, ind, ns, sig,nordcorr
         integer status1,group,fpixel,flag, nelements, nchunk, nsig
 
-  character*80 filename
+	character*80 filename
         character*(*) directory
         character*3 lch, lch_p
         character*2 ynum2, ynum
 !        character*1 omin, omax
 
-  logical simple,extend, exists, compute_noise, compute_varnoise
+	logical simple,extend, exists, compute_noise, compute_varnoise
 
         real*8 yearnum
         real*8, allocatable, dimension(:,:,:) :: tempreal
@@ -1206,19 +1210,19 @@ END FUNCTION SHTDAT
           if (exists) call system('rm '//filename)
           print *,'Writing file '//filename
 
-    status1 = 0
-    call ftgiou(unit1,status1)
-    blocksize=1
-!  dump_array = dble(temp)
-    call ftinit(unit1,trim(adjustl(filename)),blocksize,status1)
-    simple=.true.
-    bitpix=-64
+	  status1 = 0
+	  call ftgiou(unit1,status1)
+	  blocksize=1
+!	 dump_array = dble(temp)
+	  call ftinit(unit1,trim(adjustl(filename)),blocksize,status1)
+	  simple=.true.
+	  bitpix=-64
           ns = (smax + 1)**2
-    naxes(1)=ns
-    naxes(2)=nordcorr
-!   naxes(3)=ordmax - ordmin + 1
-    naxes(3)=nsig
-    naxes(4)=2
+	  naxes(1)=ns
+	  naxes(2)=nordcorr
+!	  naxes(3)=ordmax - ordmin + 1
+	  naxes(3)=nsig
+	  naxes(4)=2
 
           allocate(temp(1:ns,1:nordcorr,1:nsig, 2))
           allocate(tempreal(1:ns,1:nordcorr,1:nsig))
@@ -1243,15 +1247,15 @@ END FUNCTION SHTDAT
             enddo
           enddo
 
-    nelements=naxes(1)*naxes(2)*naxes(3)*naxes(4)!*2
-    extend=.false.
-    group=1
-    fpixel=1
+	  nelements=naxes(1)*naxes(2)*naxes(3)*naxes(4)!*2
+	  extend=.false.
+	  group=1
+	  fpixel=1
 
-    call ftphpr(unit1,simple,bitpix,4,naxes,0,1,extend,status1)
-    call ftpprd(unit1,group,fpixel,nelements,temp,status1)
-    call ftclos(unit1, status1)
-    call ftfiou(unit1, status1)
+	  call ftphpr(unit1,simple,bitpix,4,naxes,0,1,extend,status1)
+	  call ftpprd(unit1,group,fpixel,nelements,temp,status1)
+	  call ftclos(unit1, status1)
+	  call ftfiou(unit1, status1)
 
          ! WRITING OUT SIGNAL
 
@@ -1269,18 +1273,18 @@ END FUNCTION SHTDAT
           if (exists) call system('rm '//filename)
           print *,'Writing file '//filename
 
-    status1 = 0
-    call ftgiou(unit1,status1)
-    blocksize=1
-!  dump_array = dble(temp)
-    call ftinit(unit1,trim(adjustl(filename)),blocksize,status1)
-    simple=.true.
-    bitpix=-64
+	  status1 = 0
+	  call ftgiou(unit1,status1)
+	  blocksize=1
+!	 dump_array = dble(temp)
+	  call ftinit(unit1,trim(adjustl(filename)),blocksize,status1)
+	  simple=.true.
+	  bitpix=-64
           ns = (smax + 1)**2
-    naxes(1)=ns
-    naxes(2)= nordcorr !ordmax - ordmin + 1
-!   naxes(3)=ordmax - ordmin + 1
-    naxes(3)=nsig
+	  naxes(1)=ns
+	  naxes(2)= nordcorr !ordmax - ordmin + 1
+!	  naxes(3)=ordmax - ordmin + 1
+	  naxes(3)=nsig
 
           tempreal = 0.d0
           ind = 0
@@ -1301,15 +1305,15 @@ END FUNCTION SHTDAT
             enddo
           enddo
 
-    nelements=naxes(1)*naxes(2)*naxes(3)
-    extend=.false.
-    group=1
-    fpixel=1
+	  nelements=naxes(1)*naxes(2)*naxes(3)
+	  extend=.false.
+	  group=1
+	  fpixel=1
 
-    call ftphpr(unit1,simple,bitpix,3,naxes(1:3),0,1,extend,status1)
-    call ftpprd(unit1,group,fpixel,nelements,tempreal,status1)
-    call ftclos(unit1, status1)
-    call ftfiou(unit1, status1)
+	  call ftphpr(unit1,simple,bitpix,3,naxes(1:3),0,1,extend,status1)
+	  call ftpprd(unit1,group,fpixel,nelements,tempreal,status1)
+	  call ftclos(unit1, status1)
+	  call ftfiou(unit1, status1)
 
 
           if (compute_varnoise) then 
@@ -1326,18 +1330,18 @@ END FUNCTION SHTDAT
            if (exists) call system('rm '//filename)
            print *,'Writing file '//filename
 
-     status1 = 0
-     call ftgiou(unit1,status1)
-     blocksize=1
-!  dump_array = dble(temp)
-     call ftinit(unit1,trim(adjustl(filename)),blocksize,status1)
-     simple=.true.
-     bitpix=-64
+	   status1 = 0
+	   call ftgiou(unit1,status1)
+	   blocksize=1
+!	 dump_array = dble(temp)
+	   call ftinit(unit1,trim(adjustl(filename)),blocksize,status1)
+	   simple=.true.
+	   bitpix=-64
            ns = (smax + 1)**2
-     naxes(1)=ns
-     naxes(2)=ordmax - ordmin + 1
-!   naxes(3)=ordmax - ordmin + 1
-     naxes(3)=nsig !sigmax!-sigmin+1
+	   naxes(1)=ns
+	   naxes(2)=ordmax - ordmin + 1
+!	  naxes(3)=ordmax - ordmin + 1
+	   naxes(3)=nsig !sigmax!-sigmin+1
 
            tempreal = 0.d0
            ind = 0
@@ -1355,26 +1359,21 @@ END FUNCTION SHTDAT
              enddo
            enddo
 
-     nelements=naxes(1)*naxes(2)*naxes(3)
-     extend=.false.
-     group=1
-     fpixel=1
+	   nelements=naxes(1)*naxes(2)*naxes(3)
+	   extend=.false.
+	   group=1
+	   fpixel=1
  
-     call ftphpr(unit1,simple,bitpix,3,naxes(1:3),0,1,extend,status1)
-     call ftpprd(unit1,group,fpixel,nelements,tempreal,status1)
-     call ftclos(unit1, status1)
-     call ftfiou(unit1, status1)
+	   call ftphpr(unit1,simple,bitpix,3,naxes(1:3),0,1,extend,status1)
+	   call ftpprd(unit1,group,fpixel,nelements,tempreal,status1)
+	   call ftclos(unit1, status1)
+	   call ftfiou(unit1, status1)
           
            deallocate(temp,tempreal)
           endif
          endif
 
          
-          do i0 = ordmin, ordmax
-            write(102,*) int(en(l)%ords(i0)), freqnu(l)%ords(i0), a1(l)%ords(i0), &
-                       int(en(lp)%ords(i0)), freqnu(lp)%ords(i0), a1(lp)%ords(i0)
-         enddo
-         flush(102)
 !           write(102,*) 'Ell: '
 !           write(102,*) l
 !           write(102,*)
@@ -1394,7 +1393,7 @@ END FUNCTION SHTDAT
 !           write(102,*) dnu
            
 
-   end SUBROUTINE writefits_bcoef_same
+	 end SUBROUTINE writefits_bcoef_same
 
 !================================================================================
 
@@ -1436,55 +1435,55 @@ END SUBROUTINE compute_wig3j_data_analysis
 
 !================================================================================
 
-   SUBROUTINE readfits(filename,readarr,dim1,dime2,dim3)
+	 SUBROUTINE readfits(filename,readarr,dim1,dime2,dim3)
 
-    implicit none
-    integer status,unit,readwrite,blocksize,naxes(3)
-    integer group,firstpix, dim3 ,dime2,dim1
-    integer nelements, hdutype
-    real*8 readarr(dim1,dime2,dim3)
-    real*8 nullval!,temp(dim1,dime2,dim3)
-    logical anynull, lexist
-    character*(*) filename
+	  implicit none
+	  integer status,unit,readwrite,blocksize,naxes(3)
+	  integer group,firstpix, dim3 ,dime2,dim1
+	  integer nelements, hdutype
+	  real*8 readarr(dim1,dime2,dim3)
+	  real*8 nullval!,temp(dim1,dime2,dim3)
+	  logical anynull, lexist
+	  character*(*) filename
 
-        
-    status=0
-    call ftgiou(unit,status)
-    readwrite=0
+	      
+	  status=0
+	  call ftgiou(unit,status)
+	  readwrite=0
           inquire(file=filename, exist = lexist)
           if (.not. lexist) then
             print *,filename
             print *,'THIS FILE DOES NOT EXIST'
             stop
           endif
-    print *,'Now reading the file: '//filename
+	  print *,'Now reading the file: '//filename
 
 
-    call ftopen(unit,filename,readwrite,blocksize,status)
+	  call ftopen(unit,filename,readwrite,blocksize,status)
 
           if (instrument == 'HMI' .and. dim1 > 7e4) &
            call FTMRHD(unit, 1, hdutype, status)
 
-     naxes(1) = dim1
-     naxes(2) = dime2
-     naxes(3) = dim3
-     nelements=naxes(1)*naxes(2)*naxes(3)
+	   naxes(1) = dim1
+	   naxes(2) = dime2
+	   naxes(3) = dim3
+	   nelements=naxes(1)*naxes(2)*naxes(3)
 !           print *,nelements
-     group=1
-     firstpix=1
-     nullval=-999
+	   group=1
+	   firstpix=1
+	   nullval=-999
 
-     call ftgpvd(unit,group,firstpix,nelements,nullval, &
+	   call ftgpvd(unit,group,firstpix,nelements,nullval, &
                         readarr,anynull,status)
 
-     !readarr = temp
-     
-!    print *,minval(readarr),maxval(readarr)
-    call ftclos(unit, status)
-    call ftfiou(unit, status)
+	   !readarr = temp
+	   
+!	   print *,minval(readarr),maxval(readarr)
+	  call ftclos(unit, status)
+	  call ftfiou(unit, status)
 
 
-    end SUBROUTINE readfits
+	  end SUBROUTINE readfits
 
 
 
@@ -2483,14 +2482,14 @@ subroutine read_leakage(dl,dm, ell, ellp)
    allocate(cr_mat(2*dm_mat+1,2*dl_mat+1,ind),ci_mat(2*dm_mat+1,2*dl_mat+1,ind), &
          hr_mat(2*dm_mat+1,2*dl_mat+1,ind),hi_mat(2*dm_mat+1,2*dl_mat+1,ind))
 
-   call readfits('/scratch/jb6888/QDP/leakvw0/default/vradsum/leakrlist.vradsum.fits',cr_mat,&
+   call readfits('/home/shravan/QDP/leakvw0/default/vradsum/leakrlist.vradsum.fits',cr_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
-   call readfits('/scratch/jb6888/QDP/leakvw0/default/vradsum/leakilist.vradsum.fits',ci_mat,&
+   call readfits('/home/shravan/QDP/leakvw0/default/vradsum/leakilist.vradsum.fits',ci_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
 
-   call readfits('/scratch/jb6888/QDP/leakvw0/default/vhorsum/leakrlist.vhorsum.fits',hr_mat,&
+   call readfits('/home/shravan/QDP/leakvw0/default/vhorsum/leakrlist.vhorsum.fits',hr_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
-   call readfits('/scratch/jb6888/QDP/leakvw0/default/vhorsum/leakilist.vhorsum.fits',hi_mat,&
+   call readfits('/home/shravan/QDP/leakvw0/default/vhorsum/leakilist.vhorsum.fits',hi_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
 
    

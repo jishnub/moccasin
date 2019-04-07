@@ -10,8 +10,9 @@
   character*3 yearc
   character*3 ellc
   character*80 filename
+  logical notation_72
 
-  type(option_s):: opts(8)
+  type(option_s):: opts(9)
    opts(1) = option_s( "compute_norms", .false., 'a' )
    opts(2) = option_s( "flow_analysis",  .true.,  'b' )
    opts(3) = option_s( "yearnum", .true.,  'c')
@@ -20,8 +21,10 @@
    opts(6) = option_s( "nyears", .true.,  'f')
    opts(7) = option_s( "help", .false.,  'h')
    opts(8) = option_s( "instrument", .true.,  'i')
+   opts(9) = option_s( "notation_72", .false.,  'j')
 
     compute_norms = .false.
+    notation_72 = .false.
     flow_analysis = .true.
     yearnum = -1
     ell = -1
@@ -30,7 +33,7 @@
     instrument = 'FFF'
 
     do
-        select case( getopt( "abcdefhi:", opts ) ) ! opts is optional (for longopts only)
+        select case( getopt( "abcdefhij:", opts ) ) ! opts is optional (for longopts only)
             case( char(0) )
                 exit
             case( 'a' )
@@ -57,6 +60,9 @@
                 instrument = optarg
                 !if (optarg == 'HMI' .or. optarg == 'MDI') instrument = optarg
                 !if (optarg == 'mdi' .or. optarg == 'hmi') instrument = upper(optarg)
+            case( 'j' )
+                notation_72 = .true.
+
         end select
     end do
     if (nyears < 0 .or. ell < 0 .or. ellp < 0 .or. yearnum < 0 &
@@ -67,6 +73,11 @@
      print *,'Need ellp >= ell. Quitting'
      stop
     endif
+
+    if (notation_72) then
+     yearnum =  (yearnum - 1.0)/5.0 + 1.0
+     nyears =  nyears/5.0
+    endif
  !call getarg(1,yearc)
  !read(yearc,*) yearnum
 
@@ -75,7 +86,6 @@
 
  !call getarg(3,ellc)
  !read(ellc,*) ellp 
-
 ! ellp = ell
  !call getarg(4,yearc)
  !read(yearc,*) nyears

@@ -35,19 +35,19 @@ COMMAND2=	process
 COMMAND3=	setup
 COMMAND4=	kernels
 
-INCLUDE= $(current_dir)/optlib -I/share/apps/NYUAD/fftw3/avx2/3.3.4/include
+INCLUDE= -I$(current_dir)/optlib -I/share/apps/NYUAD/fftw3/avx2/3.3.4/include
 
 $(COMMAND1): $(OBJS1) 
-	$(FC) -I$(INCLUDE) $(FFLAGS) -o $(COMMAND1) $(OBJS1) $(LIBS1) 
+	$(FC) $(INCLUDE) $(FFLAGS) -o $(COMMAND1) $(OBJS1) $(LIBS1) 
 
 $(COMMAND2): $(OBJS2) 
-	$(FC) -I$(INCLUDE) $(FFLAGS) -o $(COMMAND2) $(OBJS2) $(LIBS1) 
+	$(FC) $(INCLUDE) $(FFLAGS) -o $(COMMAND2) $(OBJS2) $(LIBS1) 
 
 $(COMMAND3): $(OBJS3) 
-	$(FC) -I$(INCLUDE) $(FFLAGS) -o $(COMMAND3) $(OBJS3) $(LIBS2)
+	$(FC) $(INCLUDE) $(FFLAGS) -o $(COMMAND3) $(OBJS3) $(LIBS2)
 
 $(COMMAND4): $(OBJS4) 
-	$(FC) -I$(INCLUDE) $(FFLAGS) -o $(COMMAND4) $(OBJS4) $(LIBS1)
+	$(FC) $(INCLUDE) $(FFLAGS) -o $(COMMAND4) $(OBJS4) $(LIBS1)
 
 
 %.o : %.f
@@ -61,7 +61,7 @@ f90getopt.mod : f90getopt.F90
 	mv libf90getopt.a optlib/libf90getopt.a
 
 %.o : %.f90
-	$(FC) -I$(INCLUDE) $(FFLAGS) -c $< 
+	$(FC) $(INCLUDE) $(FFLAGS) -c $< 
 
 clean:
 	@find . \( -name $(COMMAND1) -o -name $(COMMAND2) \) -delete

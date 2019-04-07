@@ -6,18 +6,18 @@ character*80 mdidir, hmidir, freqmdidir, freqhmidir
 character*80 outmdidir, outhmidir
 logical FLOW_ANALYSIS, compute_norms
 real*8 rotEarth, trackrate
-parameter(rotEarth = 0.0317, trackrate = 0.430)!\mu Hz
+parameter(rotEarth = 0.0317, trackrate = 0.453)!\mu Hz
 real*8 pi, rsun, msun, Gcon
 parameter (pi = acos(-1.0d0), Gcon = 6.678e-8)
 character*3 instrument
-parameter ( smin = 1, smax = 7, lmin = 1, lmax = 255)
+parameter ( smin = 1, smax = 50, lmin = 1, lmax = 249)
 parameter (nsplits = 36)
-parameter (hmidir = '/scratch/jb6888/HMI')
-parameter (mdidir = '/scratch/jb6888/MDI')
-parameter (outhmidir = '/scratch/jb6888/HMIout')
-parameter (outmdidir = '/scratch/jb6888/MDI')
-parameter (freqhmidir = '/scratch/jb6888/freqs')
-parameter (freqmdidir = '/scratch/jb6888/freqs')
+parameter (hmidir = '/scratch/jishnu/data/HMI/data')
+parameter (mdidir = '/scratch/jishnu/data/MDI/data')
+parameter (outhmidir = '/scratch/shravan/HMI2')
+parameter (outmdidir = '/scratch/shravan/MDI2')
+parameter (freqhmidir = '/scratch/shravan/freqs')
+parameter (freqmdidir = '/scratch/shravan/freqs')
 
-parameter(sigmin = 0, sigmax = 200.0, offresonance = 6.0, dsig = 1, freqmin = 1400.0, freqmax = 4600.0)
+parameter(sigmin = 0.0, sigmax = 0.0, offresonance = 3.0, dsig = 1, freqmin = 1500.0, freqmax = 4000.0)
 
