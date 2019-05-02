@@ -423,7 +423,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
     do orderp = storderp,ubound(en(ellp)%ords,1)!1,size(en(ellp)%ords)
      if (en(ellp)%ords(orderp)< 0 .or. freqnu(ellp)%ords(orderp) .lt. freqmin) cycle
     !print *,order,orderp,freqnu(ellp)%ords(orderp) ,freqnu(ell)%ords(order),freqnu(ellp)%ords(orderp) -freqnu(ell)%ords(order)
-     if (abs(freqnu(ellp)%ords(orderp) - freqnu(ell)%ords(order)) .le. 15*max(fwhm(ellp)%ords(orderp),fwhm(ell)%ords(order))&!(sigmax + offresonance) &
+     if (abs(freqnu(ellp)%ords(orderp) - freqnu(ell)%ords(order)) .le. sigmax &!(sigmax + offresonance) &
       .and. abs(freqnu(ellp)%ords(orderp) - freqnu(ell)%ords(order)) .ge. sigmin ) then
      !print *,ell,order,fwhm(ell)%ords(order),ellp,orderp,fwhm(ellp)%ords(orderp),&
       !             abs(freqnu(ellp)%ords(orderp) - freqnu(ell)%ords(order))
@@ -456,14 +456,15 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
    stop
   endif 
 
+  call system('mkdir -p '//adjustl(trim(prefix)))
+  call system('mkdir -p '//adjustl(trim(prefix))//'/tracking'//trackch)
+  call system('mkdir -p '//adjustl(trim(prefix))//'/processed')
+
   open(331,file=adjustl(trim(prefix))//'/tracking'//trackch//&
        '/frequency_metadata_l_'//lch//'_lp_'//lch_p//'_year_'//ynum//'_'//ynum2,status='unknown',&
        action='write')
 
   if (.not. compute_norms) then
-   call system('mkdir -p '//adjustl(trim(prefix)))
-   call system('mkdir -p '//adjustl(trim(prefix))//'/tracking'//trackch)
-   call system('mkdir -p '//adjustl(trim(prefix))//'/processed')
 
    open(102,file=adjustl(trim(prefix))//'/tracking'//trackch//'/bcoef_metadata_l_'//lch//'_lp_'//lch_p//&
     '_year_'//ynum//'_'//ynum2,action='write',status='unknown', position='rewind')
@@ -764,7 +765,7 @@ subroutine analyzethis (yearnum, ell, ellp, nyears)
        .and. any(en(ellp)%ords .eq. orderp) .and. (freqnu(ellp)%ords(orderp) .ne. 0)) then
 
          ! REFIND0 is SET ZERO: CHANGE
-         refind0 = 0!nint(abs(freqnu(ellp)%ords(orderp) - freqnu(ell)%ords(order))/dnu) !+ nint(rand())*(1-2*nint(rand()))
+         refind0 = nint(abs(freqnu(ellp)%ords(orderp) - freqnu(ell)%ords(order))/dnu) !+ nint(rand())*(1-2*nint(rand()))
          write(331,*) ell,order,freqnu(ell)%ords(order), ellp,orderp,freqnu(ellp)%ords(orderp)
 
          do t = -smax, smax 
@@ -1141,7 +1142,8 @@ elseif (instrument == 'HMI') then
   do i=0,nmax-1
  !  read(325,'(A)') dirloc
    write(daynum,'(I4.4)') st
-   call readfits(trim(adjustl(hmidir))//'/HMI_'//ellc//'_'//daynum//'.fits',dat,twont72,ell+1,1)
+   call readfits(trim(adjustl(hmidir))//'/'//ellc//'/HMI_'&
+            //ellc//'_'//daynum//'.fits',dat,twont72,ell+1,1)
  !  call readfits('/scratch/data/HMI/hmi.v_sht_gf_72d.'&
   !     //daynum//'.'//trim(adjustl(el))//'.fits', dat, twont72,ell+1,1)
    indst = i*nt72+1
@@ -2482,14 +2484,14 @@ subroutine read_leakage(dl,dm, ell, ellp)
    allocate(cr_mat(2*dm_mat+1,2*dl_mat+1,ind),ci_mat(2*dm_mat+1,2*dl_mat+1,ind), &
          hr_mat(2*dm_mat+1,2*dl_mat+1,ind),hi_mat(2*dm_mat+1,2*dl_mat+1,ind))
 
-   call readfits('/home/shravan/QDP/leakvw0/default/vradsum/leakrlist.vradsum.fits',cr_mat,&
+   call readfits(trim(QDPpath)//'/leakvw0/default/vradsum/leakrlist.vradsum.fits',cr_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
-   call readfits('/home/shravan/QDP/leakvw0/default/vradsum/leakilist.vradsum.fits',ci_mat,&
+   call readfits(trim(QDPpath)//'/leakvw0/default/vradsum/leakilist.vradsum.fits',ci_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
 
-   call readfits('/home/shravan/QDP/leakvw0/default/vhorsum/leakrlist.vhorsum.fits',hr_mat,&
+   call readfits(trim(QDPpath)//'/leakvw0/default/vhorsum/leakrlist.vhorsum.fits',hr_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
-   call readfits('/home/shravan/QDP/leakvw0/default/vhorsum/leakilist.vhorsum.fits',hi_mat,&
+   call readfits(trim(QDPpath)//'/leakvw0/default/vhorsum/leakilist.vhorsum.fits',hi_mat,&
       2*dm_mat+1,2*dl_mat+1,ind)
 
    
